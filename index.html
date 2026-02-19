@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Angelus Paint Color Mixer</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+            background: linear-gradient(90deg, #e94560, #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 30px;
+        }
+
+        @media (max-width: 900px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .image-section {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 20px;
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            transition: border-color 0.3s;
+        }
+
+        .image-section:hover {
+            border-color: rgba(233, 69, 96, 0.5);
+        }
+
+        .image-section.dragover {
+            border-color: #e94560;
+            background: rgba(233, 69, 96, 0.1);
+        }
+
+        .drop-zone {
+            min-height: 400px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .drop-zone-text {
+            text-align: center;
+            color: #888;
+        }
+
+        .drop-zone-text h3 {
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+
+        .drop-zone-text p {
+            font-size: 0.9em;
+        }
+
+        #imageCanvas {
+            max-width: 100%;
+            cursor: crosshair;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .canvas-container {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .zoom-controls {
+            display: none;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .zoom-controls.visible {
+            display: flex;
+        }
+
+        .zoom-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            padding: 8px 16px;
+            color: #fff;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background 0.2s;
+        }
+
+        .zoom-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .zoom-info {
+            color: #888;
+            font-size: 0.85em;
+            padding: 8px;
+            display: flex;
+            align-items: center;
+        }
+
+        .color-preview-float {
+            position: absolute;
+            width: 60px;
+            height: 60px;
+            border: 3px solid white;
+            border-radius: 50%;
+            pointer-events: none;
+            display: none;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transform: translate(-50%, -120%);
+        }
+
+        .results-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .card h3 {
+            margin-bottom: 15px;
+            font-size: 1.1em;
+            color: #e94560;
+        }
+
+        .color-input-section {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .color-display {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .color-swatch {
+            width: 80px;
+            height: 80px;
+            border-radius: 12px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .color-info {
+            flex: 1;
+        }
+
+        .color-hex {
+            font-size: 1.5em;
+            font-weight: bold;
+            font-family: monospace;
+        }
+
+        .color-rgb {
+            color: #888;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        input[type="text"] {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: #fff;
+            font-size: 1em;
+            font-family: monospace;
+            width: 140px;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #e94560;
+        }
+
+        input[type="color"] {
+            width: 50px;
+            height: 46px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background: transparent;
+        }
+
+        button {
+            background: linear-gradient(135deg, #e94560, #ff6b6b);
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            color: white;
+            font-size: 1em;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 250px;
+            margin: 20px 0;
+        }
+
+        .ratio-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .ratio-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+        }
+
+        .ratio-color {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .ratio-name {
+            flex: 1;
+            font-size: 0.9em;
+        }
+
+        .ratio-value {
+            font-weight: bold;
+            font-family: monospace;
+            color: #e94560;
+        }
+
+        .result-preview {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+        }
+
+        .result-swatch {
+            width: 60px;
+            height: 60px;
+            border-radius: 10px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .error-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(233, 69, 96, 0.2);
+            border-radius: 20px;
+            font-size: 0.85em;
+            color: #ff6b6b;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .instructions {
+            background: rgba(233, 69, 96, 0.1);
+            border-left: 4px solid #e94560;
+            padding: 15px;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 20px;
+        }
+
+        .instructions h4 {
+            margin-bottom: 8px;
+        }
+
+        .instructions ul {
+            margin-left: 20px;
+            color: #aaa;
+            font-size: 0.9em;
+        }
+
+        .instructions li {
+            margin-bottom: 4px;
+        }
+
+        .reset-btn {
+            background: rgba(255, 255, 255, 0.1);
+            margin-top: 10px;
+            width: 100%;
+        }
+
+        .reset-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            box-shadow: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Angelus Paint Color Mixer</h1>
+        <p class="subtitle">Angelus絵の具の配合比率を自動計算</p>
+
+        <div class="main-content">
+            <div class="image-section" id="dropZone">
+                <div class="drop-zone" id="dropZoneContent">
+                    <div class="drop-zone-text">
+                        <h3>画像をドロップまたはペースト</h3>
+                        <p>クリックしてファイルを選択することもできます</p>
+                        <p style="margin-top: 15px; color: #666;">Ctrl+V で画像をペースト可能</p>
+                    </div>
+                </div>
+                <div class="canvas-container">
+                    <canvas id="imageCanvas"></canvas>
+                    <div class="color-preview-float" id="colorPreviewFloat"></div>
+                </div>
+                <div class="zoom-controls" id="zoomControls">
+                    <button class="zoom-btn" id="zoomInBtn">+ 拡大</button>
+                    <button class="zoom-btn" id="zoomOutBtn">- 縮小</button>
+                    <button class="zoom-btn" id="zoomResetBtn">リセット</button>
+                    <span class="zoom-info" id="zoomInfo">100% | ホイールでズーム、ドラッグで移動</span>
+                </div>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                <button class="reset-btn hidden" id="resetBtn">別の画像を選択</button>
+            </div>
+
+            <div class="results-section">
+                <div class="instructions">
+                    <h4>使い方</h4>
+                    <ul>
+                        <li>画像をドラッグ＆ドロップまたはペースト</li>
+                        <li>画像上でクリックして色を選択</li>
+                        <li>または下のHEXコードを直接入力</li>
+                    </ul>
+                </div>
+
+                <div class="card">
+                    <h3>ターゲット色</h3>
+                    <div class="color-input-section">
+                        <input type="color" id="colorPicker" value="#FF8800">
+                        <input type="text" id="hexInput" placeholder="#FF8800" value="#FF8800">
+                        <button id="calculateBtn">計算</button>
+                    </div>
+                    <div class="color-display" style="margin-top: 15px;">
+                        <div class="color-swatch" id="targetSwatch" style="background: #FF8800;"></div>
+                        <div class="color-info">
+                            <div class="color-hex" id="targetHex">#FF8800</div>
+                            <div class="color-rgb" id="targetRgb">RGB(255, 136, 0)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" id="resultsCard">
+                    <h3>配合比率</h3>
+                    <div class="chart-container">
+                        <canvas id="ratioChart"></canvas>
+                    </div>
+                    <div class="ratio-list" id="ratioList">
+                        <!-- 動的に生成 -->
+                    </div>
+                    <div class="result-preview">
+                        <div class="result-swatch" id="resultSwatch"></div>
+                        <div>
+                            <div style="font-weight: bold;">再現色</div>
+                            <div class="color-hex" id="resultHex" style="font-size: 1.2em;"></div>
+                            <span class="error-badge" id="errorBadge"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Angelus基本色
+        const BASE_COLORS = {
+            "001-Black": [20, 20, 25],
+            "005-White": [255, 255, 255],
+            "040-Blue": [0, 90, 170],
+            "050-Green": [0, 130, 70],
+            "064-Red": [200, 35, 40],
+            "075-Yellow": [255, 210, 0]
+        };
+
+        const COLOR_NAMES_JP = {
+            "001-Black": "ブラック",
+            "005-White": "ホワイト",
+            "040-Blue": "ブルー",
+            "050-Green": "グリーン",
+            "064-Red": "レッド",
+            "075-Yellow": "イエロー"
+        };
+
+        const CHART_COLORS = {
+            "001-Black": "#141419",
+            "005-White": "#EEEEEE",
+            "040-Blue": "#005AAA",
+            "050-Green": "#008246",
+            "064-Red": "#C82328",
+            "075-Yellow": "#FFD200"
+        };
+
+        // DOM要素
+        const dropZone = document.getElementById('dropZone');
+        const dropZoneContent = document.getElementById('dropZoneContent');
+        const fileInput = document.getElementById('fileInput');
+        const canvas = document.getElementById('imageCanvas');
+        const ctx = canvas.getContext('2d');
+        const colorPreviewFloat = document.getElementById('colorPreviewFloat');
+        const colorPicker = document.getElementById('colorPicker');
+        const hexInput = document.getElementById('hexInput');
+        const calculateBtn = document.getElementById('calculateBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const zoomControls = document.getElementById('zoomControls');
+        const zoomInBtn = document.getElementById('zoomInBtn');
+        const zoomOutBtn = document.getElementById('zoomOutBtn');
+        const zoomResetBtn = document.getElementById('zoomResetBtn');
+        const zoomInfo = document.getElementById('zoomInfo');
+
+        let currentImage = null;
+        let ratioChart = null;
+
+        // ズーム・パン用の状態
+        let scale = 1;
+        let offsetX = 0;
+        let offsetY = 0;
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let lastOffsetX = 0;
+        let lastOffsetY = 0;
+
+        // ドラッグ&ドロップ
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                loadImage(files[0]);
+            }
+        });
+
+        // クリックでファイル選択
+        dropZoneContent.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                loadImage(e.target.files[0]);
+            }
+        });
+
+        // ペースト対応
+        document.addEventListener('paste', (e) => {
+            const items = e.clipboardData.items;
+            for (let item of items) {
+                if (item.type.indexOf('image') !== -1) {
+                    const blob = item.getAsFile();
+                    loadImage(blob);
+                    break;
+                }
+            }
+        });
+
+        // 画像読み込み
+        function loadImage(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    currentImage = img;
+
+                    // ズーム状態をリセット
+                    scale = 1;
+                    offsetX = 0;
+                    offsetY = 0;
+
+                    // キャンバスサイズ調整
+                    const maxWidth = dropZone.clientWidth - 40;
+                    const initialScale = Math.min(1, maxWidth / img.width);
+                    canvas.width = img.width * initialScale;
+                    canvas.height = img.height * initialScale;
+                    canvas.dataset.initialScale = initialScale;
+
+                    drawImage();
+
+                    dropZoneContent.classList.add('hidden');
+                    canvas.style.display = 'block';
+                    zoomControls.classList.add('visible');
+                    resetBtn.classList.remove('hidden');
+                    updateZoomInfo();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // 画像描画（ズーム・パン対応）
+        function drawImage() {
+            if (!currentImage) return;
+
+            const initialScale = parseFloat(canvas.dataset.initialScale) || 1;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+
+            // キャンバスの中心を基準にスケール
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+
+            ctx.translate(centerX + offsetX, centerY + offsetY);
+            ctx.scale(scale, scale);
+            ctx.translate(-centerX, -centerY);
+
+            ctx.drawImage(currentImage, 0, 0, canvas.width, canvas.height);
+            ctx.restore();
+        }
+
+        // ズーム情報更新
+        function updateZoomInfo() {
+            const percent = Math.round(scale * 100);
+            zoomInfo.textContent = `${percent}% | ホイールでズーム、ドラッグで移動`;
+        }
+
+        // ズームイン
+        zoomInBtn.addEventListener('click', () => {
+            scale = Math.min(scale * 1.25, 10);
+            drawImage();
+            updateZoomInfo();
+        });
+
+        // ズームアウト
+        zoomOutBtn.addEventListener('click', () => {
+            scale = Math.max(scale / 1.25, 0.1);
+            drawImage();
+            updateZoomInfo();
+        });
+
+        // ズームリセット
+        zoomResetBtn.addEventListener('click', () => {
+            scale = 1;
+            offsetX = 0;
+            offsetY = 0;
+            drawImage();
+            updateZoomInfo();
+        });
+
+        // マウスホイールでズーム
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            const newScale = Math.max(0.1, Math.min(10, scale * delta));
+
+            // マウス位置を基準にズーム
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left - canvas.width / 2;
+            const mouseY = e.clientY - rect.top - canvas.height / 2;
+
+            offsetX = mouseX - (mouseX - offsetX) * (newScale / scale);
+            offsetY = mouseY - (mouseY - offsetY) * (newScale / scale);
+
+            scale = newScale;
+            drawImage();
+            updateZoomInfo();
+        });
+
+        // ドラッグでパン
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 2 || e.shiftKey) { // 右クリックまたはShift+クリックでパン
+                isDragging = true;
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                lastOffsetX = offsetX;
+                lastOffsetY = offsetY;
+                canvas.style.cursor = 'grabbing';
+                e.preventDefault();
+            }
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                offsetX = lastOffsetX + (e.clientX - dragStartX);
+                offsetY = lastOffsetY + (e.clientY - dragStartY);
+                drawImage();
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                canvas.style.cursor = 'crosshair';
+            }
+        });
+
+        // 右クリックメニュー無効化
+        canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        // キャンバスクリックで色取得
+        canvas.addEventListener('click', (e) => {
+            if (isDragging) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            // キャンバスのピクセルから直接色を取得
+            const pixel = ctx.getImageData(x, y, 1, 1).data;
+
+            // 透明部分（画像外）をクリックした場合は無視
+            if (pixel[3] === 0) return;
+
+            const hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
+
+            updateTargetColor(hex);
+            calculateMix();
+        });
+
+        // マウス移動でプレビュー
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            const pixel = ctx.getImageData(x, y, 1, 1).data;
+
+            // 透明部分は表示しない
+            if (pixel[3] === 0) {
+                colorPreviewFloat.style.display = 'none';
+                return;
+            }
+
+            const hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
+
+            colorPreviewFloat.style.display = 'block';
+            colorPreviewFloat.style.left = x + 'px';
+            colorPreviewFloat.style.top = y + 'px';
+            colorPreviewFloat.style.backgroundColor = hex;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            colorPreviewFloat.style.display = 'none';
+        });
+
+        // リセット
+        resetBtn.addEventListener('click', () => {
+            currentImage = null;
+            scale = 1;
+            offsetX = 0;
+            offsetY = 0;
+            canvas.style.display = 'none';
+            zoomControls.classList.remove('visible');
+            dropZoneContent.classList.remove('hidden');
+            resetBtn.classList.add('hidden');
+            fileInput.value = '';
+        });
+
+        // 色入力
+        colorPicker.addEventListener('input', (e) => {
+            updateTargetColor(e.target.value);
+        });
+
+        colorPicker.addEventListener('change', () => {
+            calculateMix();
+        });
+
+        hexInput.addEventListener('input', (e) => {
+            let value = e.target.value;
+            if (value.match(/^#?[0-9A-Fa-f]{6}$/)) {
+                if (!value.startsWith('#')) value = '#' + value;
+                updateTargetColor(value);
+            }
+        });
+
+        hexInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                calculateMix();
+            }
+        });
+
+        calculateBtn.addEventListener('click', calculateMix);
+
+        // ターゲット色更新
+        function updateTargetColor(hex) {
+            colorPicker.value = hex;
+            hexInput.value = hex.toUpperCase();
+            document.getElementById('targetSwatch').style.backgroundColor = hex;
+            document.getElementById('targetHex').textContent = hex.toUpperCase();
+
+            const rgb = hexToRgb(hex);
+            document.getElementById('targetRgb').textContent = `RGB(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+        }
+
+        // 色変換ユーティリティ
+        function rgbToHex(r, g, b) {
+            return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+        }
+
+        function hexToRgb(hex) {
+            hex = hex.replace('#', '');
+            return {
+                r: parseInt(hex.substr(0, 2), 16),
+                g: parseInt(hex.substr(2, 2), 16),
+                b: parseInt(hex.substr(4, 2), 16)
+            };
+        }
+
+        // 配合計算（APIまたはローカル計算）
+        async function calculateMix() {
+            const hex = hexInput.value;
+            const target = hexToRgb(hex);
+            const targetRgb = [target.r, target.g, target.b];
+
+            // まずAPIを試す
+            try {
+                const response = await fetch('/api/mix', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hex: hex })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    displayResults(targetRgb, data.ratios);
+                    console.log('API calculation used');
+                    return;
+                }
+            } catch (e) {
+                console.log('API not available, using local calculation');
+            }
+
+            // APIが使えない場合はローカル計算
+            calculateMixLocal(targetRgb);
+        }
+
+        // ローカル計算（JavaScript版）
+        function calculateMixLocal(targetRgb) {
+            // 制約付き最適化（簡易版）
+            const colorNames = Object.keys(BASE_COLORS);
+            const colorMatrix = colorNames.map(name => BASE_COLORS[name]);
+
+            // グリッドサーチ + 勾配降下で最適解を探索
+            let bestRatios = null;
+            let bestError = Infinity;
+
+            // 多点からの最適化
+            for (let trial = 0; trial < 100; trial++) {
+                let ratios = colorNames.map(() => Math.random());
+                const sum = ratios.reduce((a, b) => a + b, 0);
+                ratios = ratios.map(r => r / sum);
+
+                // 勾配降下
+                for (let iter = 0; iter < 200; iter++) {
+                    const blended = blendColors(ratios, colorMatrix);
+                    const error = colorDistance(blended, targetRgb);
+
+                    if (error < bestError) {
+                        bestError = error;
+                        bestRatios = [...ratios];
+                    }
+
+                    // 勾配計算と更新
+                    const lr = 0.01;
+                    for (let i = 0; i < ratios.length; i++) {
+                        const delta = 0.001;
+                        const ratiosPlus = [...ratios];
+                        ratiosPlus[i] += delta;
+                        normalize(ratiosPlus);
+
+                        const errorPlus = colorDistance(blendColors(ratiosPlus, colorMatrix), targetRgb);
+                        const gradient = (errorPlus - error) / delta;
+
+                        ratios[i] -= lr * gradient;
+                        ratios[i] = Math.max(0, ratios[i]);
+                    }
+                    normalize(ratios);
+                }
+            }
+
+            // 結果を整形
+            const result = {};
+            colorNames.forEach((name, i) => {
+                if (bestRatios[i] >= 0.01) {
+                    result[name] = Math.round(bestRatios[i] * 1000) / 1000;
+                }
+            });
+
+            // 正規化
+            const total = Object.values(result).reduce((a, b) => a + b, 0);
+            for (let key in result) {
+                result[key] = Math.round((result[key] / total) * 1000) / 1000;
+            }
+
+            displayResults(targetRgb, result);
+        }
+
+        function blendColors(ratios, colorMatrix) {
+            const result = [0, 0, 0];
+            for (let i = 0; i < ratios.length; i++) {
+                for (let j = 0; j < 3; j++) {
+                    result[j] += ratios[i] * colorMatrix[i][j];
+                }
+            }
+            return result;
+        }
+
+        function colorDistance(c1, c2) {
+            return Math.sqrt(
+                Math.pow(c1[0] - c2[0], 2) +
+                Math.pow(c1[1] - c2[1], 2) +
+                Math.pow(c1[2] - c2[2], 2)
+            );
+        }
+
+        function normalize(arr) {
+            const sum = arr.reduce((a, b) => a + b, 0);
+            if (sum > 0) {
+                for (let i = 0; i < arr.length; i++) {
+                    arr[i] /= sum;
+                }
+            }
+        }
+
+        // 結果表示
+        function displayResults(targetRgb, ratios) {
+            // 再現色を計算
+            const colorNames = Object.keys(BASE_COLORS);
+            const colorMatrix = colorNames.map(name => BASE_COLORS[name]);
+            const ratioArray = colorNames.map(name => ratios[name] || 0);
+            const resultRgb = blendColors(ratioArray, colorMatrix);
+            const resultHex = rgbToHex(
+                Math.round(resultRgb[0]),
+                Math.round(resultRgb[1]),
+                Math.round(resultRgb[2])
+            );
+
+            // 誤差計算
+            const error = colorDistance(resultRgb, targetRgb);
+            const errorPercent = (error / 441.67 * 100).toFixed(1);
+
+            // 円グラフ更新
+            updateChart(ratios);
+
+            // リスト更新
+            const ratioList = document.getElementById('ratioList');
+            ratioList.innerHTML = '';
+
+            const sortedRatios = Object.entries(ratios).sort((a, b) => b[1] - a[1]);
+            for (const [name, value] of sortedRatios) {
+                const percent = (value * 100).toFixed(1);
+                const item = document.createElement('div');
+                item.className = 'ratio-item';
+                item.innerHTML = `
+                    <div class="ratio-color" style="background: ${CHART_COLORS[name]};"></div>
+                    <span class="ratio-name">${name} (${COLOR_NAMES_JP[name]})</span>
+                    <span class="ratio-value">${percent}%</span>
+                `;
+                ratioList.appendChild(item);
+            }
+
+            // 再現色表示
+            document.getElementById('resultSwatch').style.backgroundColor = resultHex;
+            document.getElementById('resultHex').textContent = resultHex;
+            document.getElementById('errorBadge').textContent = `誤差: ${errorPercent}%`;
+        }
+
+        // 円グラフ更新
+        function updateChart(ratios) {
+            const labels = [];
+            const data = [];
+            const colors = [];
+            const borderColors = [];
+
+            for (const [name, value] of Object.entries(ratios)) {
+                labels.push(COLOR_NAMES_JP[name]);
+                data.push((value * 100).toFixed(1));
+                colors.push(CHART_COLORS[name]);
+                borderColors.push(name === '005-White' ? '#CCCCCC' : CHART_COLORS[name]);
+            }
+
+            if (ratioChart) {
+                ratioChart.destroy();
+            }
+
+            ratioChart = new Chart(document.getElementById('ratioChart'), {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: colors,
+                        borderColor: borderColors,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                color: '#fff',
+                                padding: 15,
+                                font: {
+                                    size: 12
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.label + ': ' + context.raw + '%';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 初期計算
+        calculateMix();
+    </script>
+</body>
+</html>
