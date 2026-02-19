@@ -11,10 +11,10 @@ Angelus絵の具の配合比率を自動計算するエンジン
 
 import sys
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize, differential_evolution
 
-# Angelus基本色のRGB値
-BASE_COLORS = {
+# Angelus基本色（軸となる6色）
+PRIMARY_COLORS = {
     "001-Black": np.array([20, 20, 25]),
     "005-White": np.array([255, 255, 255]),
     "040-Blue": np.array([0, 90, 170]),
@@ -22,6 +22,25 @@ BASE_COLORS = {
     "064-Red": np.array([200, 35, 40]),
     "075-Yellow": np.array([255, 210, 0]),
 }
+
+# 補助色（より正確な配合のため）
+SECONDARY_COLORS = {
+    "024-Orange": np.array([255, 100, 30]),
+    "047-Purple": np.array([100, 50, 120]),
+    "014-Brown": np.array([90, 55, 40]),
+    "029-Tan": np.array([210, 170, 130]),
+    "041-Light Blue": np.array([80, 160, 210]),
+    "052-Midnight Green": np.array([0, 75, 70]),
+    "060-Burgundy": np.array([120, 30, 50]),
+    "072-Gold": np.array([210, 170, 50]),
+    "080-Dark Grey": np.array([80, 80, 85]),
+    "082-Light Grey": np.array([180, 180, 185]),
+    "188-Pink": np.array([240, 150, 170]),
+    "142-Bronze": np.array([140, 100, 55]),
+}
+
+# 全色を結合
+BASE_COLORS = {**PRIMARY_COLORS, **SECONDARY_COLORS}
 
 # 表示用の色名（日本語）
 COLOR_NAMES_JP = {
@@ -31,6 +50,18 @@ COLOR_NAMES_JP = {
     "050-Green": "グリーン",
     "064-Red": "レッド",
     "075-Yellow": "イエロー",
+    "024-Orange": "オレンジ",
+    "047-Purple": "パープル",
+    "014-Brown": "ブラウン",
+    "029-Tan": "タン",
+    "041-Light Blue": "ライトブルー",
+    "052-Midnight Green": "ミッドナイトグリーン",
+    "060-Burgundy": "バーガンディ",
+    "072-Gold": "ゴールド",
+    "080-Dark Grey": "ダークグレー",
+    "082-Light Grey": "ライトグレー",
+    "188-Pink": "ピンク",
+    "142-Bronze": "ブロンズ",
 }
 
 # 円グラフ用の色
@@ -41,6 +72,18 @@ CHART_COLORS = {
     "050-Green": "#008246",
     "064-Red": "#C82328",
     "075-Yellow": "#FFD200",
+    "024-Orange": "#FF641E",
+    "047-Purple": "#643278",
+    "014-Brown": "#5A3728",
+    "029-Tan": "#D2AA82",
+    "041-Light Blue": "#50A0D2",
+    "052-Midnight Green": "#004B46",
+    "060-Burgundy": "#781E32",
+    "072-Gold": "#D2AA32",
+    "080-Dark Grey": "#505055",
+    "082-Light Grey": "#B4B4B9",
+    "188-Pink": "#F096AA",
+    "142-Bronze": "#8C6437",
 }
 
 
@@ -59,6 +102,72 @@ def rgb_to_hex(rgb: np.ndarray) -> str:
     )
 
 
+def rgb_to_lab(rgb: np.ndarray) -> np.ndarray:
+    """RGBをCIE Lab色空間に変換（人間の知覚に近い）"""
+    # RGB to XYZ
+    rgb_normalized = rgb / 255.0
+
+    # sRGBガンマ補正
+    mask = rgb_normalized > 0.04045
+    rgb_linear = np.where(mask, ((rgb_normalized + 0.055) / 1.055) ** 2.4, rgb_normalized / 12.92)
+
+    # RGB to XYZ matrix (sRGB, D65)
+    matrix = np.array([
+        [0.4124564, 0.3575761, 0.1804375],
+        [0.2126729, 0.7151522, 0.0721750],
+        [0.0193339, 0.1191920, 0.9503041]
+    ])
+    xyz = np.dot(matrix, rgb_linear * 100)
+
+    # XYZ to Lab (D65 white point)
+    ref = np.array([95.047, 100.000, 108.883])
+    xyz_normalized = xyz / ref
+
+    mask = xyz_normalized > 0.008856
+    f = np.where(mask, xyz_normalized ** (1/3), (7.787 * xyz_normalized) + (16/116))
+
+    L = (116 * f[1]) - 16
+    a = 500 * (f[0] - f[1])
+    b = 200 * (f[1] - f[2])
+
+    return np.array([L, a, b])
+
+
+def lab_to_rgb(lab: np.ndarray) -> np.ndarray:
+    """CIE Lab色空間をRGBに変換"""
+    L, a, b = lab
+
+    # Lab to XYZ
+    fy = (L + 16) / 116
+    fx = a / 500 + fy
+    fz = fy - b / 200
+
+    def f_inv(t):
+        return np.where(t > 0.206893, t ** 3, (t - 16/116) / 7.787)
+
+    ref = np.array([95.047, 100.000, 108.883])
+    xyz = np.array([f_inv(fx), f_inv(fy), f_inv(fz)]) * ref / 100
+
+    # XYZ to RGB matrix
+    matrix = np.array([
+        [ 3.2404542, -1.5371385, -0.4985314],
+        [-0.9692660,  1.8760108,  0.0415560],
+        [ 0.0556434, -0.2040259,  1.0572252]
+    ])
+    rgb_linear = np.dot(matrix, xyz)
+
+    # ガンマ補正
+    mask = rgb_linear > 0.0031308
+    rgb = np.where(mask, 1.055 * (rgb_linear ** (1/2.4)) - 0.055, 12.92 * rgb_linear)
+
+    return np.clip(rgb * 255, 0, 255)
+
+
+def delta_e_cie76(lab1: np.ndarray, lab2: np.ndarray) -> float:
+    """CIE76色差（ΔE）を計算"""
+    return np.sqrt(np.sum((lab1 - lab2) ** 2))
+
+
 def blend_colors(ratios: dict) -> np.ndarray:
     """
     配合比率から混色結果のRGBを計算
@@ -73,18 +182,24 @@ def blend_colors(ratios: dict) -> np.ndarray:
     return result
 
 
+def blend_colors_array(ratios: np.ndarray, color_matrix: np.ndarray) -> np.ndarray:
+    """配列ベースの混色計算"""
+    return np.dot(ratios, color_matrix)
+
+
 def calculate_color_difference(rgb1: np.ndarray, rgb2: np.ndarray) -> float:
     """2色間のユークリッド距離（色差）を計算"""
     return np.sqrt(np.sum((rgb1 - rgb2) ** 2))
 
 
-def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True) -> dict:
+def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True, use_lab: bool = True) -> dict:
     """
-    ターゲット色に最も近い配合比率を計算
+    ターゲット色に最も近い配合比率を計算（Lab色空間対応）
 
     Args:
         target_rgb: 目標のRGB値 (numpy array)
         use_all_colors: 全色を使用するかどうか
+        use_lab: Lab色空間で最適化するかどうか
 
     Returns:
         配合比率の辞書
@@ -93,10 +208,23 @@ def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True) -> dict:
     n_colors = len(color_names)
     color_matrix = np.array([BASE_COLORS[name] for name in color_names])
 
-    def objective(ratios):
-        """目的関数: 色差の最小化"""
+    # Lab色空間に変換
+    target_lab = rgb_to_lab(target_rgb)
+    color_labs = np.array([rgb_to_lab(BASE_COLORS[name]) for name in color_names])
+
+    def objective_lab(ratios):
+        """目的関数: Lab色空間での色差（ΔE）の最小化"""
+        blended_rgb = np.dot(ratios, color_matrix)
+        blended_rgb = np.clip(blended_rgb, 0, 255)
+        blended_lab = rgb_to_lab(blended_rgb)
+        return delta_e_cie76(blended_lab, target_lab)
+
+    def objective_rgb(ratios):
+        """目的関数: RGB色空間での色差の最小化"""
         blended = np.dot(ratios, color_matrix)
         return calculate_color_difference(blended, target_rgb)
+
+    objective = objective_lab if use_lab else objective_rgb
 
     # 制約条件: 合計 = 1
     constraints = {"type": "eq", "fun": lambda x: np.sum(x) - 1}
@@ -104,24 +232,58 @@ def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True) -> dict:
     # 境界条件: 各比率は0〜1
     bounds = [(0, 1) for _ in range(n_colors)]
 
-    # 初期値: 均等配分
-    x0 = np.ones(n_colors) / n_colors
+    # 複数の初期値から最適化を実行して最良の結果を採用
+    best_result = None
+    best_error = float('inf')
 
-    # 最適化実行
-    result = minimize(
-        objective,
-        x0,
-        method="SLSQP",
-        bounds=bounds,
-        constraints=constraints,
-        options={"ftol": 1e-10, "maxiter": 1000},
-    )
+    # 戦略1: 均等配分から開始
+    initial_points = [np.ones(n_colors) / n_colors]
 
-    # 結果を辞書に変換（1%未満は0に）
+    # 戦略2: 各基本色を重視した初期値
+    for i in range(min(6, n_colors)):  # 軸となる6色
+        x0 = np.ones(n_colors) * 0.01
+        x0[i] = 0.5
+        x0 = x0 / x0.sum()
+        initial_points.append(x0)
+
+    # 戦略3: ランダム初期値
+    np.random.seed(42)
+    for _ in range(10):
+        x0 = np.random.rand(n_colors)
+        x0 = x0 / x0.sum()
+        initial_points.append(x0)
+
+    for x0 in initial_points:
+        try:
+            result = minimize(
+                objective,
+                x0,
+                method="SLSQP",
+                bounds=bounds,
+                constraints=constraints,
+                options={"ftol": 1e-12, "maxiter": 2000},
+            )
+            if result.fun < best_error:
+                best_error = result.fun
+                best_result = result
+        except:
+            continue
+
+    if best_result is None:
+        # フォールバック
+        best_result = minimize(
+            objective,
+            np.ones(n_colors) / n_colors,
+            method="SLSQP",
+            bounds=bounds,
+            constraints=constraints,
+        )
+
+    # 結果を辞書に変換（0.5%未満は0に）
     ratios = {}
     for i, name in enumerate(color_names):
-        ratio = result.x[i]
-        if ratio >= 0.01:  # 1%以上のみ
+        ratio = best_result.x[i]
+        if ratio >= 0.005:  # 0.5%以上のみ
             ratios[name] = round(ratio, 4)
 
     # 正規化（合計を1に）
@@ -142,19 +304,33 @@ def calculate_mix_result(target_rgb: np.ndarray) -> dict:
             "ratios": {"001-Black": 0.2, ...},
             "result": {"rgb": [r,g,b], "hex": "#RRGGBB"},
             "error": 誤差率(%)
+            "delta_e": Lab色空間での色差
         }
     """
-    ratios = calculate_mix(target_rgb)
+    ratios = calculate_mix(target_rgb, use_lab=True)
     result_rgb = blend_colors(ratios)
-    error = calculate_color_difference(target_rgb, result_rgb)
-    error_percent = (error / 441.67) * 100  # 最大誤差(白→黒)で正規化
+    result_rgb = np.clip(result_rgb, 0, 255)
+
+    # RGB誤差
+    rgb_error = calculate_color_difference(target_rgb, result_rgb)
+    rgb_error_percent = (rgb_error / 441.67) * 100  # 最大誤差(白→黒)で正規化
+
+    # Lab色差（ΔE）- より人間の知覚に近い
+    target_lab = rgb_to_lab(target_rgb)
+    result_lab = rgb_to_lab(result_rgb)
+    delta_e = delta_e_cie76(target_lab, result_lab)
+
+    # ΔEを%に変換（ΔE=100が最大と仮定）
+    delta_e_percent = min(delta_e, 100)
 
     return {
         "target": {"rgb": target_rgb.tolist(), "hex": rgb_to_hex(target_rgb)},
         "ratios": ratios,
         "ratios_percent": {k: round(v * 100, 1) for k, v in ratios.items()},
         "result": {"rgb": result_rgb.tolist(), "hex": rgb_to_hex(result_rgb)},
-        "error": round(error_percent, 2),
+        "error": round(delta_e_percent, 2),  # Lab色差を使用
+        "delta_e": round(delta_e, 2),
+        "rgb_error": round(rgb_error_percent, 2),
         "color_names_jp": COLOR_NAMES_JP,
         "chart_colors": CHART_COLORS,
     }

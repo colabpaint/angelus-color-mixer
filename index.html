@@ -420,6 +420,9 @@
                             <div style="font-weight: bold;">再現色</div>
                             <div class="color-hex" id="resultHex" style="font-size: 1.2em;"></div>
                             <span class="error-badge" id="errorBadge"></span>
+                            <div style="font-size: 0.75em; color: #666; margin-top: 4px;">
+                                ΔE≦5: 優秀 | ΔE≦10: 良好
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -428,8 +431,8 @@
     </div>
 
     <script>
-        // Angelus基本色
-        const BASE_COLORS = {
+        // Angelus基本色（軸となる6色）
+        const PRIMARY_COLORS = {
             "001-Black": [20, 20, 25],
             "005-White": [255, 255, 255],
             "040-Blue": [0, 90, 170],
@@ -438,13 +441,44 @@
             "075-Yellow": [255, 210, 0]
         };
 
+        // 補助色
+        const SECONDARY_COLORS = {
+            "024-Orange": [255, 100, 30],
+            "047-Purple": [100, 50, 120],
+            "014-Brown": [90, 55, 40],
+            "029-Tan": [210, 170, 130],
+            "041-Light Blue": [80, 160, 210],
+            "052-Midnight Green": [0, 75, 70],
+            "060-Burgundy": [120, 30, 50],
+            "072-Gold": [210, 170, 50],
+            "080-Dark Grey": [80, 80, 85],
+            "082-Light Grey": [180, 180, 185],
+            "188-Pink": [240, 150, 170],
+            "142-Bronze": [140, 100, 55]
+        };
+
+        // 全色を結合
+        const BASE_COLORS = {...PRIMARY_COLORS, ...SECONDARY_COLORS};
+
         const COLOR_NAMES_JP = {
             "001-Black": "ブラック",
             "005-White": "ホワイト",
             "040-Blue": "ブルー",
             "050-Green": "グリーン",
             "064-Red": "レッド",
-            "075-Yellow": "イエロー"
+            "075-Yellow": "イエロー",
+            "024-Orange": "オレンジ",
+            "047-Purple": "パープル",
+            "014-Brown": "ブラウン",
+            "029-Tan": "タン",
+            "041-Light Blue": "ライトブルー",
+            "052-Midnight Green": "ミッドナイトグリーン",
+            "060-Burgundy": "バーガンディ",
+            "072-Gold": "ゴールド",
+            "080-Dark Grey": "ダークグレー",
+            "082-Light Grey": "ライトグレー",
+            "188-Pink": "ピンク",
+            "142-Bronze": "ブロンズ"
         };
 
         const CHART_COLORS = {
@@ -453,7 +487,19 @@
             "040-Blue": "#005AAA",
             "050-Green": "#008246",
             "064-Red": "#C82328",
-            "075-Yellow": "#FFD200"
+            "075-Yellow": "#FFD200",
+            "024-Orange": "#FF641E",
+            "047-Purple": "#643278",
+            "014-Brown": "#5A3728",
+            "029-Tan": "#D2AA82",
+            "041-Light Blue": "#50A0D2",
+            "052-Midnight Green": "#004B46",
+            "060-Burgundy": "#781E32",
+            "072-Gold": "#D2AA32",
+            "080-Dark Grey": "#505055",
+            "082-Light Grey": "#B4B4B9",
+            "188-Pink": "#F096AA",
+            "142-Bronze": "#8C6437"
         };
 
         // DOM要素
@@ -771,6 +817,48 @@
             };
         }
 
+        // RGB to Lab変換（人間の知覚に近い色空間）
+        function rgbToLab(rgb) {
+            // RGB to XYZ
+            let r = rgb[0] / 255;
+            let g = rgb[1] / 255;
+            let b = rgb[2] / 255;
+
+            // sRGBガンマ補正
+            r = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
+            g = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
+            b = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
+
+            // RGB to XYZ
+            let x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) * 100;
+            let y = (r * 0.2126729 + g * 0.7151522 + b * 0.0721750) * 100;
+            let z = (r * 0.0193339 + g * 0.1191920 + b * 0.9503041) * 100;
+
+            // XYZ to Lab (D65)
+            x /= 95.047;
+            y /= 100.000;
+            z /= 108.883;
+
+            x = x > 0.008856 ? Math.pow(x, 1/3) : (7.787 * x) + (16/116);
+            y = y > 0.008856 ? Math.pow(y, 1/3) : (7.787 * y) + (16/116);
+            z = z > 0.008856 ? Math.pow(z, 1/3) : (7.787 * z) + (16/116);
+
+            return [
+                (116 * y) - 16,  // L
+                500 * (x - y),   // a
+                200 * (y - z)    // b
+            ];
+        }
+
+        // Lab色差（ΔE CIE76）
+        function deltaE(lab1, lab2) {
+            return Math.sqrt(
+                Math.pow(lab1[0] - lab2[0], 2) +
+                Math.pow(lab1[1] - lab2[1], 2) +
+                Math.pow(lab1[2] - lab2[2], 2)
+            );
+        }
+
         // 配合計算（APIまたはローカル計算）
         async function calculateMix() {
             const hex = hexInput.value;
@@ -799,54 +887,74 @@
             calculateMixLocal(targetRgb);
         }
 
-        // ローカル計算（JavaScript版）
+        // ローカル計算（JavaScript版 - Lab色空間対応）
         function calculateMixLocal(targetRgb) {
-            // 制約付き最適化（簡易版）
             const colorNames = Object.keys(BASE_COLORS);
             const colorMatrix = colorNames.map(name => BASE_COLORS[name]);
+            const targetLab = rgbToLab(targetRgb);
 
-            // グリッドサーチ + 勾配降下で最適解を探索
             let bestRatios = null;
             let bestError = Infinity;
 
-            // 多点からの最適化
-            for (let trial = 0; trial < 100; trial++) {
-                let ratios = colorNames.map(() => Math.random());
-                const sum = ratios.reduce((a, b) => a + b, 0);
-                ratios = ratios.map(r => r / sum);
+            // Lab色空間での誤差計算
+            function calcLabError(ratios) {
+                const blended = blendColors(ratios, colorMatrix);
+                const clipped = blended.map(v => Math.max(0, Math.min(255, v)));
+                const blendedLab = rgbToLab(clipped);
+                return deltaE(blendedLab, targetLab);
+            }
 
-                // 勾配降下
-                for (let iter = 0; iter < 200; iter++) {
-                    const blended = blendColors(ratios, colorMatrix);
-                    const error = colorDistance(blended, targetRgb);
+            // 多点からの最適化（より多くの試行）
+            for (let trial = 0; trial < 200; trial++) {
+                let ratios;
+
+                if (trial < 6) {
+                    // 基本色を重視した初期値
+                    ratios = colorNames.map(() => 0.01);
+                    ratios[trial] = 0.5;
+                } else {
+                    // ランダム初期値
+                    ratios = colorNames.map(() => Math.random());
+                }
+                normalize(ratios);
+
+                // 勾配降下（より多くの反復）
+                let lr = 0.02;
+                for (let iter = 0; iter < 500; iter++) {
+                    const error = calcLabError(ratios);
 
                     if (error < bestError) {
                         bestError = error;
                         bestRatios = [...ratios];
                     }
 
+                    // 学習率の減衰
+                    if (iter % 100 === 0) lr *= 0.8;
+
                     // 勾配計算と更新
-                    const lr = 0.01;
                     for (let i = 0; i < ratios.length; i++) {
                         const delta = 0.001;
                         const ratiosPlus = [...ratios];
                         ratiosPlus[i] += delta;
                         normalize(ratiosPlus);
 
-                        const errorPlus = colorDistance(blendColors(ratiosPlus, colorMatrix), targetRgb);
+                        const errorPlus = calcLabError(ratiosPlus);
                         const gradient = (errorPlus - error) / delta;
 
                         ratios[i] -= lr * gradient;
                         ratios[i] = Math.max(0, ratios[i]);
                     }
                     normalize(ratios);
+
+                    // 早期終了
+                    if (error < 1) break;
                 }
             }
 
-            // 結果を整形
+            // 結果を整形（0.5%未満は除外）
             const result = {};
             colorNames.forEach((name, i) => {
-                if (bestRatios[i] >= 0.01) {
+                if (bestRatios[i] >= 0.005) {
                     result[name] = Math.round(bestRatios[i] * 1000) / 1000;
                 }
             });
@@ -894,15 +1002,18 @@
             const colorMatrix = colorNames.map(name => BASE_COLORS[name]);
             const ratioArray = colorNames.map(name => ratios[name] || 0);
             const resultRgb = blendColors(ratioArray, colorMatrix);
+            const clippedRgb = resultRgb.map(v => Math.max(0, Math.min(255, v)));
             const resultHex = rgbToHex(
-                Math.round(resultRgb[0]),
-                Math.round(resultRgb[1]),
-                Math.round(resultRgb[2])
+                Math.round(clippedRgb[0]),
+                Math.round(clippedRgb[1]),
+                Math.round(clippedRgb[2])
             );
 
-            // 誤差計算
-            const error = colorDistance(resultRgb, targetRgb);
-            const errorPercent = (error / 441.67 * 100).toFixed(1);
+            // Lab色差（ΔE）で誤差計算
+            const targetLab = rgbToLab(targetRgb);
+            const resultLab = rgbToLab(clippedRgb);
+            const de = deltaE(targetLab, resultLab);
+            const errorPercent = Math.min(de, 100).toFixed(1);
 
             // 円グラフ更新
             updateChart(ratios);
@@ -927,7 +1038,20 @@
             // 再現色表示
             document.getElementById('resultSwatch').style.backgroundColor = resultHex;
             document.getElementById('resultHex').textContent = resultHex;
-            document.getElementById('errorBadge').textContent = `誤差: ${errorPercent}%`;
+
+            // ΔE表示とステータス色
+            const errorBadge = document.getElementById('errorBadge');
+            errorBadge.textContent = `ΔE: ${errorPercent}`;
+            if (de <= 5) {
+                errorBadge.style.background = 'rgba(0, 200, 100, 0.2)';
+                errorBadge.style.color = '#00C864';
+            } else if (de <= 10) {
+                errorBadge.style.background = 'rgba(255, 200, 0, 0.2)';
+                errorBadge.style.color = '#FFC800';
+            } else {
+                errorBadge.style.background = 'rgba(233, 69, 96, 0.2)';
+                errorBadge.style.color = '#ff6b6b';
+            }
         }
 
         // 円グラフ更新
