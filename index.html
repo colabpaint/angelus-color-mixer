@@ -952,12 +952,22 @@
             }
 
             // 結果を整形（0.5%未満は除外）
-            const result = {};
+            let result = {};
             colorNames.forEach((name, i) => {
                 if (bestRatios[i] >= 0.005) {
                     result[name] = Math.round(bestRatios[i] * 1000) / 1000;
                 }
             });
+
+            // 最大6色に制限
+            const MAX_COLORS = 6;
+            if (Object.keys(result).length > MAX_COLORS) {
+                // 上位6色を選択して再最適化
+                const sorted = Object.entries(result).sort((a, b) => b[1] - a[1]);
+                const topColors = sorted.slice(0, MAX_COLORS).map(x => x[0]);
+
+                result = reoptimizeWithColors(targetRgb, topColors);
+            }
 
             // 正規化
             const total = Object.values(result).reduce((a, b) => a + b, 0);
@@ -966,6 +976,55 @@
             }
 
             displayResults(targetRgb, result);
+        }
+
+        // 選択された色だけで再最適化
+        function reoptimizeWithColors(targetRgb, selectedColors) {
+            const colorMatrix = selectedColors.map(name => BASE_COLORS[name]);
+            const targetLab = rgbToLab(targetRgb);
+
+            function calcError(ratios) {
+                const blended = blendColors(ratios, colorMatrix);
+                const clipped = blended.map(v => Math.max(0, Math.min(255, v)));
+                return deltaE(rgbToLab(clipped), targetLab);
+            }
+
+            let bestRatios = selectedColors.map(() => 1 / selectedColors.length);
+            let bestError = calcError(bestRatios);
+
+            // 最適化
+            for (let trial = 0; trial < 50; trial++) {
+                let ratios = selectedColors.map(() => Math.random());
+                normalize(ratios);
+
+                for (let iter = 0; iter < 300; iter++) {
+                    const error = calcError(ratios);
+                    if (error < bestError) {
+                        bestError = error;
+                        bestRatios = [...ratios];
+                    }
+
+                    const lr = 0.02 * Math.pow(0.95, Math.floor(iter / 50));
+                    for (let i = 0; i < ratios.length; i++) {
+                        const delta = 0.001;
+                        const ratiosPlus = [...ratios];
+                        ratiosPlus[i] += delta;
+                        normalize(ratiosPlus);
+                        const gradient = (calcError(ratiosPlus) - error) / delta;
+                        ratios[i] -= lr * gradient;
+                        ratios[i] = Math.max(0, ratios[i]);
+                    }
+                    normalize(ratios);
+                }
+            }
+
+            const result = {};
+            selectedColors.forEach((name, i) => {
+                if (bestRatios[i] >= 0.005) {
+                    result[name] = Math.round(bestRatios[i] * 1000) / 1000;
+                }
+            });
+            return result;
         }
 
         function blendColors(ratios, colorMatrix) {

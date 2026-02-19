@@ -192,7 +192,7 @@ def calculate_color_difference(rgb1: np.ndarray, rgb2: np.ndarray) -> float:
     return np.sqrt(np.sum((rgb1 - rgb2) ** 2))
 
 
-def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True, use_lab: bool = True) -> dict:
+def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True, use_lab: bool = True, max_colors: int = 6) -> dict:
     """
     ターゲット色に最も近い配合比率を計算（Lab色空間対応）
 
@@ -200,6 +200,7 @@ def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True, use_lab: 
         target_rgb: 目標のRGB値 (numpy array)
         use_all_colors: 全色を使用するかどうか
         use_lab: Lab色空間で最適化するかどうか
+        max_colors: 使用する最大色数（デフォルト6）
 
     Returns:
         配合比率の辞書
@@ -285,6 +286,43 @@ def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True, use_lab: 
         ratio = best_result.x[i]
         if ratio >= 0.005:  # 0.5%以上のみ
             ratios[name] = round(ratio, 4)
+
+    # 最大色数を超える場合、上位の色だけで再最適化
+    if len(ratios) > max_colors:
+        # 上位max_colors色を選択
+        top_colors = sorted(ratios.items(), key=lambda x: -x[1])[:max_colors]
+        selected_names = [name for name, _ in top_colors]
+
+        # 選択した色だけで再最適化
+        selected_matrix = np.array([BASE_COLORS[name] for name in selected_names])
+        n_selected = len(selected_names)
+
+        def objective_selected(r):
+            blended_rgb = np.dot(r, selected_matrix)
+            blended_rgb = np.clip(blended_rgb, 0, 255)
+            if use_lab:
+                blended_lab = rgb_to_lab(blended_rgb)
+                return delta_e_cie76(blended_lab, target_lab)
+            else:
+                return calculate_color_difference(blended_rgb, target_rgb)
+
+        constraints_selected = {"type": "eq", "fun": lambda x: np.sum(x) - 1}
+        bounds_selected = [(0, 1) for _ in range(n_selected)]
+        x0_selected = np.ones(n_selected) / n_selected
+
+        result_selected = minimize(
+            objective_selected,
+            x0_selected,
+            method="SLSQP",
+            bounds=bounds_selected,
+            constraints=constraints_selected,
+            options={"ftol": 1e-12, "maxiter": 2000},
+        )
+
+        ratios = {}
+        for i, name in enumerate(selected_names):
+            if result_selected.x[i] >= 0.005:
+                ratios[name] = round(result_selected.x[i], 4)
 
     # 正規化（合計を1に）
     total = sum(ratios.values())
