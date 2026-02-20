@@ -403,6 +403,77 @@
             text-align: center;
             padding: 10px;
         }
+
+        /* 代替色の提案 */
+        .alternative-color {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            margin-top: 8px;
+        }
+
+        .alt-color-swatch {
+            width: 60px;
+            height: 60px;
+            border-radius: 10px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            flex-shrink: 0;
+        }
+
+        .alt-color-info {
+            flex: 1;
+            font-size: 0.95em;
+        }
+
+        .alt-color-info strong {
+            font-size: 1.2em;
+            font-family: monospace;
+        }
+
+        .alt-delta {
+            color: #00C864;
+            font-weight: bold;
+        }
+
+        .other-alternatives {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .mini-alt {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            font-size: 0.85em;
+            cursor: default;
+        }
+
+        .mini-alt:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .mini-swatch {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .advice-alternative .advice-message {
+            color: #00C864;
+        }
+
+        .advice-alternatives .advice-message {
+            color: #87CEEB;
+        }
     </style>
 </head>
 <body>
@@ -1160,111 +1231,124 @@
             return result;
         }
 
+        // 作成可能な近い色を探す
+        function findAchievableColors(targetRgb) {
+            const targetLab = rgbToLab(targetRgb);
+            const achievable = [];
+
+            // 方法1: 既存の単色で近いものを探す
+            for (const [name, rgb] of Object.entries(BASE_COLORS)) {
+                const colorLab = rgbToLab(rgb);
+                const de = deltaE(targetLab, colorLab);
+                if (de < 20) {  // 比較的近い色
+                    achievable.push({
+                        type: 'single',
+                        name: name,
+                        nameJp: COLOR_NAMES_JP[name],
+                        rgb: rgb,
+                        hex: rgbToHex(rgb[0], rgb[1], rgb[2]),
+                        deltaE: de,
+                        description: `${COLOR_NAMES_JP[name]}単色`
+                    });
+                }
+            }
+
+            // 方法2: 2色の組み合わせで近い色を探す（主要な組み合わせのみ）
+            const colorNames = Object.keys(BASE_COLORS);
+            for (let i = 0; i < colorNames.length; i++) {
+                for (let j = i + 1; j < colorNames.length; j++) {
+                    // 50:50, 70:30, 30:70 の比率を試す
+                    for (const ratio of [0.5, 0.7, 0.3]) {
+                        const rgb1 = BASE_COLORS[colorNames[i]];
+                        const rgb2 = BASE_COLORS[colorNames[j]];
+                        const mixed = [
+                            rgb1[0] * ratio + rgb2[0] * (1 - ratio),
+                            rgb1[1] * ratio + rgb2[1] * (1 - ratio),
+                            rgb1[2] * ratio + rgb2[2] * (1 - ratio)
+                        ];
+                        const mixedLab = rgbToLab(mixed);
+                        const de = deltaE(targetLab, mixedLab);
+
+                        if (de < 5) {  // ΔE < 5 で作れる色
+                            const r1 = Math.round(ratio * 100);
+                            const r2 = 100 - r1;
+                            achievable.push({
+                                type: 'mix',
+                                colors: [colorNames[i], colorNames[j]],
+                                ratios: [ratio, 1 - ratio],
+                                rgb: mixed,
+                                hex: rgbToHex(Math.round(mixed[0]), Math.round(mixed[1]), Math.round(mixed[2])),
+                                deltaE: de,
+                                description: `${COLOR_NAMES_JP[colorNames[i]]} ${r1}% + ${COLOR_NAMES_JP[colorNames[j]]} ${r2}%`
+                            });
+                        }
+                    }
+                }
+            }
+
+            // ΔE順にソート
+            achievable.sort((a, b) => a.deltaE - b.deltaE);
+
+            return achievable.slice(0, 5);  // 上位5件
+        }
+
         // 改善アドバイスを生成
         function generateAdvice(targetRgb, resultRgb, deltaE) {
             if (deltaE < 5) return null;
 
             const advice = [];
-            const diff = [
-                targetRgb[0] - resultRgb[0],  // R差分
-                targetRgb[1] - resultRgb[1],  // G差分
-                targetRgb[2] - resultRgb[2]   // B差分
-            ];
 
-            // 明るさの差（簡易計算）
-            const targetBrightness = (targetRgb[0] + targetRgb[1] + targetRgb[2]) / 3;
-            const resultBrightness = (resultRgb[0] + resultRgb[1] + resultRgb[2]) / 3;
-            const brightnessDiff = targetBrightness - resultBrightness;
+            // 作成可能な近い色を探す
+            const achievableColors = findAchievableColors(targetRgb);
 
-            // 彩度の推定（最大値と最小値の差）
-            const targetSaturation = Math.max(...targetRgb) - Math.min(...targetRgb);
-            const resultSaturation = Math.max(...resultRgb) - Math.min(...resultRgb);
+            // 代替色の提案
+            if (achievableColors.length > 0) {
+                const bestAlt = achievableColors[0];
 
-            // 明るさのアドバイス（しきい値を下げる）
-            if (brightnessDiff > 15) {
-                advice.push({
-                    type: 'brightness',
-                    message: '💡 もっと明るくする必要があります',
-                    suggestion: 'White（ホワイト）の比率を増やしてください'
-                });
-            } else if (brightnessDiff < -15) {
-                advice.push({
-                    type: 'brightness',
-                    message: '🌑 もっと暗くする必要があります',
-                    suggestion: 'Black（ブラック）の比率を増やしてください'
-                });
+                if (bestAlt.deltaE < deltaE) {
+                    let altHtml = `<div class="alternative-color">`;
+                    altHtml += `<div class="alt-color-swatch" style="background: ${bestAlt.hex};"></div>`;
+                    altHtml += `<div class="alt-color-info">`;
+                    altHtml += `<strong>${bestAlt.hex}</strong><br>`;
+                    altHtml += `${bestAlt.description}<br>`;
+                    altHtml += `<span class="alt-delta">ΔE: ${bestAlt.deltaE.toFixed(1)}</span>`;
+                    altHtml += `</div></div>`;
+
+                    advice.push({
+                        type: 'alternative',
+                        message: '🎨 この色なら作れます！',
+                        suggestion: altHtml,
+                        isHtml: true
+                    });
+                }
+
+                // 他の候補も表示
+                if (achievableColors.length > 1) {
+                    let othersHtml = '<div class="other-alternatives">';
+                    for (let i = 1; i < Math.min(4, achievableColors.length); i++) {
+                        const alt = achievableColors[i];
+                        othersHtml += `<div class="mini-alt" title="${alt.description} (ΔE: ${alt.deltaE.toFixed(1)})">`;
+                        othersHtml += `<div class="mini-swatch" style="background: ${alt.hex};"></div>`;
+                        othersHtml += `<span>${alt.hex}</span>`;
+                        othersHtml += `</div>`;
+                    }
+                    othersHtml += '</div>';
+
+                    advice.push({
+                        type: 'alternatives',
+                        message: '📋 他の候補',
+                        suggestion: othersHtml,
+                        isHtml: true
+                    });
+                }
             }
 
-            // 色相のアドバイス（しきい値を下げる）
-            if (diff[0] > 20) {
-                advice.push({
-                    type: 'hue',
-                    message: '🔴 赤みが足りません',
-                    suggestion: 'Red, Orange, Hot Pink などを追加検討'
-                });
-            } else if (diff[0] < -20) {
-                advice.push({
-                    type: 'hue',
-                    message: '🔴 赤みが強すぎます',
-                    suggestion: 'Red系の色を減らし、Blue や Green を検討'
-                });
-            }
-
-            if (diff[1] > 20) {
-                advice.push({
-                    type: 'hue',
-                    message: '🟢 緑みが足りません',
-                    suggestion: 'Green, Midnight Green などを追加検討'
-                });
-            } else if (diff[1] < -20) {
-                advice.push({
-                    type: 'hue',
-                    message: '🟢 緑みが強すぎます',
-                    suggestion: 'Green系を減らし、Red や Purple を検討'
-                });
-            }
-
-            if (diff[2] > 20) {
-                advice.push({
-                    type: 'hue',
-                    message: '🔵 青みが足りません',
-                    suggestion: 'Blue, Light Blue, Purple などを追加検討'
-                });
-            } else if (diff[2] < -20) {
-                advice.push({
-                    type: 'hue',
-                    message: '🔵 青みが強すぎます',
-                    suggestion: 'Blue系を減らし、Yellow や Orange を検討'
-                });
-            }
-
-            // 彩度のアドバイス（しきい値を下げる）
-            if (targetSaturation - resultSaturation > 30) {
-                advice.push({
-                    type: 'saturation',
-                    message: '✨ もっと鮮やかな色が必要です',
-                    suggestion: '現在のAngelusカラーでは再現が難しい可能性があります。より鮮やかな原色に近い色を追加することを検討してください。'
-                });
-            }
-
-            // 全体的なアドバイス（ΔEに応じて必ず表示）
-            if (deltaE >= 15) {
+            // 再現できない場合のメッセージ
+            if (achievableColors.length === 0 || achievableColors[0].deltaE >= deltaE) {
                 advice.push({
                     type: 'general',
-                    message: '⚠️ 大きな色差があります（ΔE=' + deltaE.toFixed(1) + '）',
-                    suggestion: '目標色がAngelusの色域外の可能性があります。近い色で妥協するか、別の絵の具ブランドとの併用を検討してください。'
-                });
-            } else if (deltaE >= 10) {
-                advice.push({
-                    type: 'general',
-                    message: '📝 中程度の色差があります（ΔE=' + deltaE.toFixed(1) + '）',
-                    suggestion: '微調整で改善できる可能性があります。配合を手動で微調整してみてください。'
-                });
-            } else if (deltaE >= 5) {
-                advice.push({
-                    type: 'general',
-                    message: '📋 わずかな色差があります（ΔE=' + deltaE.toFixed(1) + '）',
-                    suggestion: '実用上は許容範囲ですが、より正確な色が必要な場合は手動調整をお試しください。'
+                    message: '⚠️ 現在の配合が最善です',
+                    suggestion: `目標色に近い代替色が見つかりませんでした。現在の配合結果（ΔE: ${deltaE.toFixed(1)}）をお使いください。`
                 });
             }
 
@@ -1351,14 +1435,23 @@
             if (de >= 5) {
                 const advice = generateAdvice(targetRgb, clippedRgb, de);
                 if (advice && advice.length > 0) {
-                    let adviceHtml = '<div class="advice-header">💡 改善アドバイス</div>';
+                    let adviceHtml = '<div class="advice-header">💡 代替色の提案</div>';
                     for (const item of advice) {
-                        adviceHtml += `
-                            <div class="advice-item advice-${item.type}">
-                                <div class="advice-message">${item.message}</div>
-                                <div class="advice-suggestion">${item.suggestion}</div>
-                            </div>
-                        `;
+                        if (item.isHtml) {
+                            adviceHtml += `
+                                <div class="advice-item advice-${item.type}">
+                                    <div class="advice-message">${item.message}</div>
+                                    <div class="advice-suggestion">${item.suggestion}</div>
+                                </div>
+                            `;
+                        } else {
+                            adviceHtml += `
+                                <div class="advice-item advice-${item.type}">
+                                    <div class="advice-message">${item.message}</div>
+                                    <div class="advice-suggestion">${item.suggestion}</div>
+                                </div>
+                            `;
+                        }
                     }
                     adviceContainer.innerHTML = adviceHtml;
                     adviceContainer.classList.remove('hidden');
