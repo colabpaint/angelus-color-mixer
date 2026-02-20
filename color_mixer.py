@@ -32,11 +32,10 @@ SECONDARY_COLORS = {
     "041-Light Blue": np.array([80, 160, 210]),
     "052-Midnight Green": np.array([0, 75, 70]),
     "060-Burgundy": np.array([120, 30, 50]),
-    "072-Gold": np.array([210, 170, 50]),
     "080-Dark Grey": np.array([80, 80, 85]),
     "082-Light Grey": np.array([180, 180, 185]),
     "188-Pink": np.array([240, 150, 170]),
-    "142-Bronze": np.array([140, 100, 55]),
+    "186-Hot Pink": np.array([255, 80, 140]),
 }
 
 # 全色を結合
@@ -57,11 +56,10 @@ COLOR_NAMES_JP = {
     "041-Light Blue": "ライトブルー",
     "052-Midnight Green": "ミッドナイトグリーン",
     "060-Burgundy": "バーガンディ",
-    "072-Gold": "ゴールド",
     "080-Dark Grey": "ダークグレー",
     "082-Light Grey": "ライトグレー",
     "188-Pink": "ピンク",
-    "142-Bronze": "ブロンズ",
+    "186-Hot Pink": "ホットピンク",
 }
 
 # 円グラフ用の色
@@ -79,11 +77,10 @@ CHART_COLORS = {
     "041-Light Blue": "#50A0D2",
     "052-Midnight Green": "#004B46",
     "060-Burgundy": "#781E32",
-    "072-Gold": "#D2AA32",
     "080-Dark Grey": "#505055",
     "082-Light Grey": "#B4B4B9",
     "188-Pink": "#F096AA",
-    "142-Bronze": "#8C6437",
+    "186-Hot Pink": "#FF508C",
 }
 
 
@@ -192,9 +189,38 @@ def calculate_color_difference(rgb1: np.ndarray, rgb2: np.ndarray) -> float:
     return np.sqrt(np.sum((rgb1 - rgb2) ** 2))
 
 
+def find_closest_colors(target_rgb: np.ndarray, n: int = 6) -> list:
+    """
+    目標色に最も近い色をLab色空間で検索し、上位n色を返す
+
+    Args:
+        target_rgb: 目標のRGB値
+        n: 返す色の数
+
+    Returns:
+        [(色名, Lab距離), ...] のリスト（距離順）
+    """
+    target_lab = rgb_to_lab(target_rgb)
+    distances = []
+
+    for name, rgb in BASE_COLORS.items():
+        color_lab = rgb_to_lab(rgb)
+        dist = delta_e_cie76(target_lab, color_lab)
+        distances.append((name, dist))
+
+    # 距離でソート
+    distances.sort(key=lambda x: x[1])
+    return distances[:n]
+
+
 def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True, use_lab: bool = True, max_colors: int = 6) -> dict:
     """
-    ターゲット色に最も近い配合比率を計算（Lab色空間対応）
+    ターゲット色に最も近い配合比率を計算（ベース色基準アプローチ）
+
+    戦略:
+    1. 目標色に最も近い色をベース色として選択
+    2. ベース色に近い候補色を選定（Lab距離順）
+    3. ベース色を高比率で維持しながら最適化
 
     Args:
         target_rgb: 目標のRGB値 (numpy array)
@@ -205,52 +231,118 @@ def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True, use_lab: 
     Returns:
         配合比率の辞書
     """
-    color_names = list(BASE_COLORS.keys())
-    n_colors = len(color_names)
-    color_matrix = np.array([BASE_COLORS[name] for name in color_names])
-
-    # Lab色空間に変換
     target_lab = rgb_to_lab(target_rgb)
-    color_labs = np.array([rgb_to_lab(BASE_COLORS[name]) for name in color_names])
 
-    def objective_lab(ratios):
+    # ステップ1: 目標色に最も近い色を見つける
+    closest_colors = find_closest_colors(target_rgb, n=max_colors * 2)
+    base_color_name = closest_colors[0][0]
+    base_color_dist = closest_colors[0][1]
+
+    # ベース色だけで十分近い場合（ΔE < 3は人間の目では区別困難）
+    if base_color_dist < 3.0:
+        return {base_color_name: 1.0}
+
+    # ステップ2: 候補色を選定
+    # ベース色 + 調整に有効な色を選ぶ
+    candidate_names = [base_color_name]
+
+    # 目標色との差分を計算
+    base_rgb = BASE_COLORS[base_color_name]
+    diff_rgb = target_rgb - base_rgb
+    diff_lab = target_lab - rgb_to_lab(base_rgb)
+
+    # 差分を補正できる色を優先的に選ぶ
+    color_scores = []
+    for name, dist in closest_colors[1:]:
+        if name == base_color_name:
+            continue
+        color_rgb = BASE_COLORS[name]
+        color_lab = rgb_to_lab(color_rgb)
+
+        # この色がベース色からどの方向に変化させるか
+        direction_rgb = color_rgb - base_rgb
+        direction_lab = color_lab - rgb_to_lab(base_rgb)
+
+        # 差分と同じ方向に動かせる色を評価（内積）
+        alignment_lab = np.dot(diff_lab, direction_lab)
+        alignment_rgb = np.dot(diff_rgb, direction_rgb)
+
+        # 距離も考慮（近い色の方が使いやすい）
+        score = alignment_lab / (dist + 1)
+        color_scores.append((name, score, dist))
+
+    # スコア順にソート
+    color_scores.sort(key=lambda x: -x[1])
+
+    # 候補色を追加（最大max_colors - 1色）
+    for name, score, dist in color_scores:
+        if len(candidate_names) >= max_colors:
+            break
+        # 有効な方向に動かせる色、または近い色を採用
+        if score > 0 or dist < 30:
+            candidate_names.append(name)
+
+    # 候補が少ない場合、近い色を追加
+    if len(candidate_names) < max_colors:
+        for name, dist in closest_colors:
+            if name not in candidate_names:
+                candidate_names.append(name)
+            if len(candidate_names) >= max_colors:
+                break
+
+    # ステップ3: 選ばれた色で最適化
+    n_candidates = len(candidate_names)
+    candidate_matrix = np.array([BASE_COLORS[name] for name in candidate_names])
+
+    def objective(ratios):
         """目的関数: Lab色空間での色差（ΔE）の最小化"""
-        blended_rgb = np.dot(ratios, color_matrix)
+        blended_rgb = np.dot(ratios, candidate_matrix)
         blended_rgb = np.clip(blended_rgb, 0, 255)
         blended_lab = rgb_to_lab(blended_rgb)
         return delta_e_cie76(blended_lab, target_lab)
-
-    def objective_rgb(ratios):
-        """目的関数: RGB色空間での色差の最小化"""
-        blended = np.dot(ratios, color_matrix)
-        return calculate_color_difference(blended, target_rgb)
-
-    objective = objective_lab if use_lab else objective_rgb
 
     # 制約条件: 合計 = 1
     constraints = {"type": "eq", "fun": lambda x: np.sum(x) - 1}
 
     # 境界条件: 各比率は0〜1
-    bounds = [(0, 1) for _ in range(n_colors)]
+    bounds = [(0, 1) for _ in range(n_candidates)]
 
-    # 複数の初期値から最適化を実行して最良の結果を採用
+    # 複数の初期値から最適化
     best_result = None
     best_error = float('inf')
 
-    # 戦略1: 均等配分から開始
-    initial_points = [np.ones(n_colors) / n_colors]
+    initial_points = []
 
-    # 戦略2: 各基本色を重視した初期値
-    for i in range(min(6, n_colors)):  # 軸となる6色
-        x0 = np.ones(n_colors) * 0.01
-        x0[i] = 0.5
-        x0 = x0 / x0.sum()
+    # 戦略1: ベース色を主体とした初期値（70%, 50%, 30%）
+    for base_ratio in [0.7, 0.5, 0.3]:
+        x0 = np.ones(n_candidates) * (1 - base_ratio) / (n_candidates - 1)
+        x0[0] = base_ratio  # ベース色のインデックスは0
         initial_points.append(x0)
 
-    # 戦略3: ランダム初期値
+    # 戦略2: 上位2色を主体
+    if n_candidates >= 2:
+        x0 = np.zeros(n_candidates)
+        x0[0] = 0.6
+        x0[1] = 0.4
+        initial_points.append(x0)
+
+        x0 = np.zeros(n_candidates)
+        x0[0] = 0.5
+        x0[1] = 0.3
+        if n_candidates >= 3:
+            x0[2] = 0.2
+        else:
+            x0[1] = 0.5
+        initial_points.append(x0)
+
+    # 戦略3: 均等配分
+    initial_points.append(np.ones(n_candidates) / n_candidates)
+
+    # 戦略4: ランダム（ベース色重視）
     np.random.seed(42)
-    for _ in range(10):
-        x0 = np.random.rand(n_colors)
+    for _ in range(5):
+        x0 = np.random.rand(n_candidates)
+        x0[0] *= 2  # ベース色を重視
         x0 = x0 / x0.sum()
         initial_points.append(x0)
 
@@ -271,58 +363,14 @@ def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True, use_lab: 
             continue
 
     if best_result is None:
-        # フォールバック
-        best_result = minimize(
-            objective,
-            np.ones(n_colors) / n_colors,
-            method="SLSQP",
-            bounds=bounds,
-            constraints=constraints,
-        )
+        return {base_color_name: 1.0}
 
-    # 結果を辞書に変換（0.5%未満は0に）
+    # 結果を辞書に変換（1%未満は0に）
     ratios = {}
-    for i, name in enumerate(color_names):
+    for i, name in enumerate(candidate_names):
         ratio = best_result.x[i]
-        if ratio >= 0.005:  # 0.5%以上のみ
+        if ratio >= 0.01:  # 1%以上のみ
             ratios[name] = round(ratio, 4)
-
-    # 最大色数を超える場合、上位の色だけで再最適化
-    if len(ratios) > max_colors:
-        # 上位max_colors色を選択
-        top_colors = sorted(ratios.items(), key=lambda x: -x[1])[:max_colors]
-        selected_names = [name for name, _ in top_colors]
-
-        # 選択した色だけで再最適化
-        selected_matrix = np.array([BASE_COLORS[name] for name in selected_names])
-        n_selected = len(selected_names)
-
-        def objective_selected(r):
-            blended_rgb = np.dot(r, selected_matrix)
-            blended_rgb = np.clip(blended_rgb, 0, 255)
-            if use_lab:
-                blended_lab = rgb_to_lab(blended_rgb)
-                return delta_e_cie76(blended_lab, target_lab)
-            else:
-                return calculate_color_difference(blended_rgb, target_rgb)
-
-        constraints_selected = {"type": "eq", "fun": lambda x: np.sum(x) - 1}
-        bounds_selected = [(0, 1) for _ in range(n_selected)]
-        x0_selected = np.ones(n_selected) / n_selected
-
-        result_selected = minimize(
-            objective_selected,
-            x0_selected,
-            method="SLSQP",
-            bounds=bounds_selected,
-            constraints=constraints_selected,
-            options={"ftol": 1e-12, "maxiter": 2000},
-        )
-
-        ratios = {}
-        for i, name in enumerate(selected_names):
-            if result_selected.x[i] >= 0.005:
-                ratios[name] = round(result_selected.x[i], 4)
 
     # 正規化（合計を1に）
     total = sum(ratios.values())
@@ -332,43 +380,96 @@ def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True, use_lab: 
     return ratios
 
 
-def calculate_mix_result(target_rgb: np.ndarray) -> dict:
+def calculate_mix_result(target_rgb: np.ndarray, delta_e_threshold: float = 5.0) -> dict:
     """
-    配合計算の完全な結果を返す
+    配合計算の完全な結果を返す（適応的色数調整）
+
+    ΔE >= threshold の場合、色数を段階的に増やして再最適化する。
+
+    Args:
+        target_rgb: 目標のRGB値
+        delta_e_threshold: この値以上の場合、色数を増やす（デフォルト5.0）
 
     Returns:
         {
             "target": {"rgb": [r,g,b], "hex": "#RRGGBB"},
+            "base_color": ベース色の情報,
             "ratios": {"001-Black": 0.2, ...},
             "result": {"rgb": [r,g,b], "hex": "#RRGGBB"},
             "error": 誤差率(%)
             "delta_e": Lab色空間での色差
+            "colors_used": 使用色数
         }
     """
-    ratios = calculate_mix(target_rgb, use_lab=True)
-    result_rgb = blend_colors(ratios)
-    result_rgb = np.clip(result_rgb, 0, 255)
+    # ベース色を特定
+    closest = find_closest_colors(target_rgb, n=1)[0]
+    base_color_name = closest[0]
+    base_color_dist = closest[1]
+
+    target_lab = rgb_to_lab(target_rgb)
+    total_colors = len(BASE_COLORS)
+
+    # 段階的に色数を増やして最適化
+    best_ratios = None
+    best_delta_e = float('inf')
+    best_result_rgb = None
+
+    # 6色から開始、2色ずつ増やす
+    for max_colors in range(6, total_colors + 1, 2):
+        ratios = calculate_mix(target_rgb, use_lab=True, max_colors=max_colors)
+        result_rgb = blend_colors(ratios)
+        result_rgb = np.clip(result_rgb, 0, 255)
+
+        result_lab = rgb_to_lab(result_rgb)
+        delta_e = delta_e_cie76(target_lab, result_lab)
+
+        # より良い結果なら更新
+        if delta_e < best_delta_e:
+            best_delta_e = delta_e
+            best_ratios = ratios
+            best_result_rgb = result_rgb
+
+        # ΔE < threshold なら終了
+        if delta_e < delta_e_threshold:
+            break
+
+    # 最後に全色で試す（まだしきい値を超えている場合）
+    if best_delta_e >= delta_e_threshold:
+        ratios = calculate_mix(target_rgb, use_lab=True, max_colors=total_colors)
+        result_rgb = blend_colors(ratios)
+        result_rgb = np.clip(result_rgb, 0, 255)
+
+        result_lab = rgb_to_lab(result_rgb)
+        delta_e = delta_e_cie76(target_lab, result_lab)
+
+        if delta_e < best_delta_e:
+            best_delta_e = delta_e
+            best_ratios = ratios
+            best_result_rgb = result_rgb
 
     # RGB誤差
-    rgb_error = calculate_color_difference(target_rgb, result_rgb)
+    rgb_error = calculate_color_difference(target_rgb, best_result_rgb)
     rgb_error_percent = (rgb_error / 441.67) * 100  # 最大誤差(白→黒)で正規化
 
-    # Lab色差（ΔE）- より人間の知覚に近い
-    target_lab = rgb_to_lab(target_rgb)
-    result_lab = rgb_to_lab(result_rgb)
-    delta_e = delta_e_cie76(target_lab, result_lab)
-
     # ΔEを%に変換（ΔE=100が最大と仮定）
-    delta_e_percent = min(delta_e, 100)
+    delta_e_percent = min(best_delta_e, 100)
 
     return {
         "target": {"rgb": target_rgb.tolist(), "hex": rgb_to_hex(target_rgb)},
-        "ratios": ratios,
-        "ratios_percent": {k: round(v * 100, 1) for k, v in ratios.items()},
-        "result": {"rgb": result_rgb.tolist(), "hex": rgb_to_hex(result_rgb)},
+        "base_color": {
+            "name": base_color_name,
+            "name_jp": COLOR_NAMES_JP.get(base_color_name, base_color_name),
+            "rgb": BASE_COLORS[base_color_name].tolist(),
+            "hex": rgb_to_hex(BASE_COLORS[base_color_name]),
+            "delta_e": round(base_color_dist, 2),
+        },
+        "ratios": best_ratios,
+        "ratios_percent": {k: round(v * 100, 1) for k, v in best_ratios.items()},
+        "result": {"rgb": best_result_rgb.tolist(), "hex": rgb_to_hex(best_result_rgb)},
         "error": round(delta_e_percent, 2),  # Lab色差を使用
-        "delta_e": round(delta_e, 2),
+        "delta_e": round(best_delta_e, 2),
         "rgb_error": round(rgb_error_percent, 2),
+        "colors_used": len(best_ratios),
         "color_names_jp": COLOR_NAMES_JP,
         "chart_colors": CHART_COLORS,
     }
@@ -381,7 +482,15 @@ def print_result(result: dict):
     print("=" * 50)
     print(f"\n目標色: {result['target']['hex']}")
     print(f"RGB: {result['target']['rgb']}")
-    print("\n--- 配合比率 ---")
+
+    # ベース色の情報
+    base = result.get("base_color", {})
+    if base:
+        print(f"\nベース色: {base['name']} ({base['name_jp']})")
+        print(f"  {base['hex']} - 目標との差: ΔE={base['delta_e']}")
+
+    colors_used = result.get("colors_used", len(result["ratios_percent"]))
+    print(f"\n--- 配合比率 ({colors_used}色使用) ---")
 
     for color_name, percent in sorted(
         result["ratios_percent"].items(), key=lambda x: -x[1]
@@ -392,7 +501,7 @@ def print_result(result: dict):
 
     print(f"\n再現色: {result['result']['hex']}")
     print(f"RGB: [" + ", ".join(f"{int(v)}" for v in result["result"]["rgb"]) + "]")
-    print(f"誤差: {result['error']}%")
+    print(f"色差: ΔE={result['delta_e']} (誤差: {result['error']}%)")
     print("=" * 50)
 
 

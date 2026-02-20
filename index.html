@@ -450,11 +450,10 @@
             "041-Light Blue": [80, 160, 210],
             "052-Midnight Green": [0, 75, 70],
             "060-Burgundy": [120, 30, 50],
-            "072-Gold": [210, 170, 50],
             "080-Dark Grey": [80, 80, 85],
             "082-Light Grey": [180, 180, 185],
             "188-Pink": [240, 150, 170],
-            "142-Bronze": [140, 100, 55]
+            "186-Hot Pink": [255, 80, 140]
         };
 
         // 全色を結合
@@ -474,11 +473,10 @@
             "041-Light Blue": "ライトブルー",
             "052-Midnight Green": "ミッドナイトグリーン",
             "060-Burgundy": "バーガンディ",
-            "072-Gold": "ゴールド",
             "080-Dark Grey": "ダークグレー",
             "082-Light Grey": "ライトグレー",
             "188-Pink": "ピンク",
-            "142-Bronze": "ブロンズ"
+            "186-Hot Pink": "ホットピンク"
         };
 
         const CHART_COLORS = {
@@ -495,11 +493,10 @@
             "041-Light Blue": "#50A0D2",
             "052-Midnight Green": "#004B46",
             "060-Burgundy": "#781E32",
-            "072-Gold": "#D2AA32",
             "080-Dark Grey": "#505055",
             "082-Light Grey": "#B4B4B9",
             "188-Pink": "#F096AA",
-            "142-Bronze": "#8C6437"
+            "186-Hot Pink": "#FF508C"
         };
 
         // DOM要素
@@ -887,101 +884,89 @@
             calculateMixLocal(targetRgb);
         }
 
-        // ローカル計算（JavaScript版 - Lab色空間対応）
-        function calculateMixLocal(targetRgb) {
-            const colorNames = Object.keys(BASE_COLORS);
-            const colorMatrix = colorNames.map(name => BASE_COLORS[name]);
+        // 目標色に最も近い色を見つける
+        function findClosestColors(targetRgb, n) {
             const targetLab = rgbToLab(targetRgb);
+            const distances = [];
 
-            let bestRatios = null;
-            let bestError = Infinity;
-
-            // Lab色空間での誤差計算
-            function calcLabError(ratios) {
-                const blended = blendColors(ratios, colorMatrix);
-                const clipped = blended.map(v => Math.max(0, Math.min(255, v)));
-                const blendedLab = rgbToLab(clipped);
-                return deltaE(blendedLab, targetLab);
+            for (const [name, rgb] of Object.entries(BASE_COLORS)) {
+                const colorLab = rgbToLab(rgb);
+                const dist = deltaE(targetLab, colorLab);
+                distances.push({ name, dist, rgb });
             }
 
-            // 多点からの最適化（より多くの試行）
-            for (let trial = 0; trial < 200; trial++) {
-                let ratios;
-
-                if (trial < 6) {
-                    // 基本色を重視した初期値
-                    ratios = colorNames.map(() => 0.01);
-                    ratios[trial] = 0.5;
-                } else {
-                    // ランダム初期値
-                    ratios = colorNames.map(() => Math.random());
-                }
-                normalize(ratios);
-
-                // 勾配降下（より多くの反復）
-                let lr = 0.02;
-                for (let iter = 0; iter < 500; iter++) {
-                    const error = calcLabError(ratios);
-
-                    if (error < bestError) {
-                        bestError = error;
-                        bestRatios = [...ratios];
-                    }
-
-                    // 学習率の減衰
-                    if (iter % 100 === 0) lr *= 0.8;
-
-                    // 勾配計算と更新
-                    for (let i = 0; i < ratios.length; i++) {
-                        const delta = 0.001;
-                        const ratiosPlus = [...ratios];
-                        ratiosPlus[i] += delta;
-                        normalize(ratiosPlus);
-
-                        const errorPlus = calcLabError(ratiosPlus);
-                        const gradient = (errorPlus - error) / delta;
-
-                        ratios[i] -= lr * gradient;
-                        ratios[i] = Math.max(0, ratios[i]);
-                    }
-                    normalize(ratios);
-
-                    // 早期終了
-                    if (error < 1) break;
-                }
-            }
-
-            // 結果を整形（0.5%未満は除外）
-            let result = {};
-            colorNames.forEach((name, i) => {
-                if (bestRatios[i] >= 0.005) {
-                    result[name] = Math.round(bestRatios[i] * 1000) / 1000;
-                }
-            });
-
-            // 最大6色に制限
-            const MAX_COLORS = 6;
-            if (Object.keys(result).length > MAX_COLORS) {
-                // 上位6色を選択して再最適化
-                const sorted = Object.entries(result).sort((a, b) => b[1] - a[1]);
-                const topColors = sorted.slice(0, MAX_COLORS).map(x => x[0]);
-
-                result = reoptimizeWithColors(targetRgb, topColors);
-            }
-
-            // 正規化
-            const total = Object.values(result).reduce((a, b) => a + b, 0);
-            for (let key in result) {
-                result[key] = Math.round((result[key] / total) * 1000) / 1000;
-            }
-
-            displayResults(targetRgb, result);
+            distances.sort((a, b) => a.dist - b.dist);
+            return distances.slice(0, n);
         }
 
-        // 選択された色だけで再最適化
-        function reoptimizeWithColors(targetRgb, selectedColors) {
+        // 候補色を選定（ベース色基準）
+        function selectCandidateColors(targetRgb, maxColors) {
+            const targetLab = rgbToLab(targetRgb);
+            const closest = findClosestColors(targetRgb, maxColors * 2);
+            const baseColor = closest[0];
+
+            // ベース色だけで十分近い場合
+            if (baseColor.dist < 3.0) {
+                return [baseColor.name];
+            }
+
+            const candidates = [baseColor.name];
+            const baseRgb = BASE_COLORS[baseColor.name];
+            const baseLab = rgbToLab(baseRgb);
+
+            // 差分を計算
+            const diffLab = [
+                targetLab[0] - baseLab[0],
+                targetLab[1] - baseLab[1],
+                targetLab[2] - baseLab[2]
+            ];
+
+            // 差分を補正できる色をスコアリング
+            const colorScores = [];
+            for (const item of closest.slice(1)) {
+                const colorLab = rgbToLab(BASE_COLORS[item.name]);
+                const directionLab = [
+                    colorLab[0] - baseLab[0],
+                    colorLab[1] - baseLab[1],
+                    colorLab[2] - baseLab[2]
+                ];
+
+                // 内積で方向の一致度を評価
+                const alignment = diffLab[0] * directionLab[0] +
+                                  diffLab[1] * directionLab[1] +
+                                  diffLab[2] * directionLab[2];
+
+                const score = alignment / (item.dist + 1);
+                colorScores.push({ name: item.name, score, dist: item.dist });
+            }
+
+            // スコア順にソート
+            colorScores.sort((a, b) => b.score - a.score);
+
+            // 候補を追加
+            for (const item of colorScores) {
+                if (candidates.length >= maxColors) break;
+                if (item.score > 0 || item.dist < 30) {
+                    candidates.push(item.name);
+                }
+            }
+
+            // 候補が足りない場合、近い色を追加
+            for (const item of closest) {
+                if (candidates.length >= maxColors) break;
+                if (!candidates.includes(item.name)) {
+                    candidates.push(item.name);
+                }
+            }
+
+            return candidates;
+        }
+
+        // 選択された色で最適化
+        function optimizeWithColors(targetRgb, selectedColors) {
             const colorMatrix = selectedColors.map(name => BASE_COLORS[name]);
             const targetLab = rgbToLab(targetRgb);
+            const n = selectedColors.length;
 
             function calcError(ratios) {
                 const blended = blendColors(ratios, colorMatrix);
@@ -989,22 +974,54 @@
                 return deltaE(rgbToLab(clipped), targetLab);
             }
 
-            let bestRatios = selectedColors.map(() => 1 / selectedColors.length);
+            let bestRatios = selectedColors.map(() => 1 / n);
             let bestError = calcError(bestRatios);
 
-            // 最適化
-            for (let trial = 0; trial < 50; trial++) {
-                let ratios = selectedColors.map(() => Math.random());
+            // 複数の初期値から最適化
+            const initialPoints = [];
+
+            // ベース色重視の初期値
+            for (const baseRatio of [0.7, 0.5, 0.3]) {
+                const x0 = selectedColors.map(() => (1 - baseRatio) / (n - 1));
+                x0[0] = baseRatio;
+                initialPoints.push(x0);
+            }
+
+            // 上位2色重視
+            if (n >= 2) {
+                const x0 = selectedColors.map(() => 0);
+                x0[0] = 0.6;
+                x0[1] = 0.4;
+                initialPoints.push(x0);
+            }
+
+            // 均等配分
+            initialPoints.push(selectedColors.map(() => 1 / n));
+
+            // ランダム（ベース色重視）
+            for (let i = 0; i < 10; i++) {
+                const x0 = selectedColors.map(() => Math.random());
+                x0[0] *= 2;
+                normalize(x0);
+                initialPoints.push(x0);
+            }
+
+            for (const x0 of initialPoints) {
+                let ratios = [...x0];
                 normalize(ratios);
 
-                for (let iter = 0; iter < 300; iter++) {
+                // 勾配降下
+                let lr = 0.03;
+                for (let iter = 0; iter < 400; iter++) {
                     const error = calcError(ratios);
+
                     if (error < bestError) {
                         bestError = error;
                         bestRatios = [...ratios];
                     }
 
-                    const lr = 0.02 * Math.pow(0.95, Math.floor(iter / 50));
+                    if (iter % 80 === 0) lr *= 0.85;
+
                     for (let i = 0; i < ratios.length; i++) {
                         const delta = 0.001;
                         const ratiosPlus = [...ratios];
@@ -1015,16 +1032,65 @@
                         ratios[i] = Math.max(0, ratios[i]);
                     }
                     normalize(ratios);
+
+                    if (error < 0.5) break;
                 }
             }
 
+            // 結果を整形（1%未満は除外）
             const result = {};
             selectedColors.forEach((name, i) => {
-                if (bestRatios[i] >= 0.005) {
+                if (bestRatios[i] >= 0.01) {
                     result[name] = Math.round(bestRatios[i] * 1000) / 1000;
                 }
             });
-            return result;
+
+            // 正規化
+            const total = Object.values(result).reduce((a, b) => a + b, 0);
+            for (let key in result) {
+                result[key] = Math.round((result[key] / total) * 1000) / 1000;
+            }
+
+            return { ratios: result, error: bestError };
+        }
+
+        // ローカル計算（ベース色基準 + 適応的色数調整）
+        function calculateMixLocal(targetRgb) {
+            const targetLab = rgbToLab(targetRgb);
+            const totalColors = Object.keys(BASE_COLORS).length;
+            const DELTA_E_THRESHOLD = 5.0;
+
+            let bestResult = null;
+            let bestError = Infinity;
+
+            // 6色から開始、2色ずつ増やす
+            for (let maxColors = 6; maxColors <= totalColors; maxColors += 2) {
+                const candidates = selectCandidateColors(targetRgb, maxColors);
+                const result = optimizeWithColors(targetRgb, candidates);
+
+                if (result.error < bestError) {
+                    bestError = result.error;
+                    bestResult = result.ratios;
+                }
+
+                // ΔE < 5 なら終了
+                if (result.error < DELTA_E_THRESHOLD) {
+                    break;
+                }
+            }
+
+            // まだしきい値を超えている場合、全色で試す
+            if (bestError >= DELTA_E_THRESHOLD) {
+                const allColors = Object.keys(BASE_COLORS);
+                const result = optimizeWithColors(targetRgb, allColors);
+
+                if (result.error < bestError) {
+                    bestError = result.error;
+                    bestResult = result.ratios;
+                }
+            }
+
+            displayResults(targetRgb, bestResult);
         }
 
         function blendColors(ratios, colorMatrix) {
