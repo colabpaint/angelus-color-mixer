@@ -12,23 +12,46 @@
             box-sizing: border-box;
         }
 
-        body {
+        html, body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            min-height: 100vh;
+            height: 100vh;
+            overflow: hidden;
             color: #fff;
-            padding: 20px;
+            position: relative;
+        }
+
+        /* Co-Lab Paint 総柄背景 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.15;
+            background-image: url("1.png");
+            background-size: 600px auto;
+            background-repeat: repeat;
+            z-index: 0;
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
+            height: 100vh;
+            padding: 15px 20px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            z-index: 1;
         }
 
         h1 {
             text-align: center;
-            margin-bottom: 10px;
-            font-size: 2.5em;
+            margin-bottom: 5px;
+            font-size: 1.8em;
             background: linear-gradient(90deg, #e94560, #ff6b6b);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -38,13 +61,26 @@
         .subtitle {
             text-align: center;
             color: #888;
-            margin-bottom: 30px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
         }
+
 
         .main-content {
             display: grid;
-            grid-template-columns: 1fr 400px;
-            gap: 30px;
+            grid-template-columns: 1fr 360px 320px;
+            gap: 20px;
+            flex: 1;
+            min-height: 0;
+        }
+
+        @media (max-width: 1100px) {
+            .main-content {
+                grid-template-columns: 1fr 350px;
+            }
+            .alternatives-section {
+                display: none;
+            }
         }
 
         @media (max-width: 900px) {
@@ -54,43 +90,55 @@
         }
 
         .image-section {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
-            padding: 20px;
-            border: 2px dashed rgba(255, 255, 255, 0.2);
-            transition: border-color 0.3s;
+            background: rgba(30, 35, 50, 0.85);
+            border-radius: 12px;
+            padding: 15px;
+            border: 2px dashed rgba(233, 69, 96, 0.4);
+            transition: border-color 0.3s, background 0.3s;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+            backdrop-filter: blur(8px);
         }
 
         .image-section:hover {
-            border-color: rgba(233, 69, 96, 0.5);
+            border-color: rgba(233, 69, 96, 0.7);
+            background: rgba(35, 40, 60, 0.9);
         }
 
         .image-section.dragover {
             border-color: #e94560;
-            background: rgba(233, 69, 96, 0.1);
+            background: rgba(233, 69, 96, 0.15);
         }
 
         .drop-zone {
-            min-height: 400px;
+            flex: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             cursor: pointer;
+            min-height: 200px;
         }
 
         .drop-zone-text {
             text-align: center;
-            color: #888;
+            color: #ccc;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 30px 40px;
+            border-radius: 12px;
         }
 
         .drop-zone-text h3 {
             margin-bottom: 10px;
             font-size: 1.3em;
+            color: #fff;
         }
 
         .drop-zone-text p {
             font-size: 0.9em;
+            color: #aaa;
         }
 
         #imageCanvas {
@@ -103,6 +151,15 @@
         .canvas-container {
             position: relative;
             overflow: hidden;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #imageCanvas {
+            max-height: 100%;
+            object-fit: contain;
         }
 
         .zoom-controls {
@@ -154,19 +211,37 @@
         .results-section {
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 12px;
+            min-height: 0;
+            overflow-y: auto;
+        }
+
+        .alternatives-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-height: 0;
+            overflow-y: auto;
         }
 
         .card {
             background: rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            padding: 20px;
+            border-radius: 12px;
+            padding: 15px;
             backdrop-filter: blur(10px);
+            flex-shrink: 0;
+        }
+
+        .card.scrollable {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            flex-shrink: 1;
         }
 
         .card h3 {
-            margin-bottom: 15px;
-            font-size: 1.1em;
+            margin-bottom: 10px;
+            font-size: 1em;
             color: #e94560;
         }
 
@@ -184,9 +259,9 @@
         }
 
         .color-swatch {
-            width: 80px;
-            height: 80px;
-            border-radius: 12px;
+            width: 60px;
+            height: 60px;
+            border-radius: 10px;
             border: 3px solid rgba(255, 255, 255, 0.3);
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
         }
@@ -251,57 +326,58 @@
 
         .chart-container {
             position: relative;
-            height: 250px;
-            margin: 20px 0;
+            height: 180px;
+            margin: 10px 0;
         }
 
         .ratio-list {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 4px;
         }
 
         .ratio-item {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 8px 12px;
+            gap: 8px;
+            padding: 5px 10px;
             background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
+            border-radius: 6px;
         }
 
         .ratio-color {
-            width: 24px;
-            height: 24px;
-            border-radius: 6px;
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
             border: 2px solid rgba(255, 255, 255, 0.3);
         }
 
         .ratio-name {
             flex: 1;
-            font-size: 0.9em;
+            font-size: 0.8em;
         }
 
         .ratio-value {
             font-weight: bold;
             font-family: monospace;
             color: #e94560;
+            font-size: 0.85em;
         }
 
         .result-preview {
             display: flex;
             align-items: center;
-            gap: 15px;
-            margin-top: 15px;
-            padding: 15px;
+            gap: 12px;
+            margin-top: 10px;
+            padding: 10px;
             background: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
+            border-radius: 10px;
         }
 
         .result-swatch {
-            width: 60px;
-            height: 60px;
-            border-radius: 10px;
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
             border: 2px solid rgba(255, 255, 255, 0.3);
         }
 
@@ -321,23 +397,24 @@
         .instructions {
             background: rgba(233, 69, 96, 0.1);
             border-left: 4px solid #e94560;
-            padding: 15px;
+            padding: 10px 12px;
             border-radius: 0 8px 8px 0;
-            margin-bottom: 20px;
+            font-size: 0.85em;
         }
 
         .instructions h4 {
-            margin-bottom: 8px;
+            margin-bottom: 6px;
+            font-size: 0.95em;
         }
 
         .instructions ul {
-            margin-left: 20px;
+            margin-left: 18px;
             color: #aaa;
             font-size: 0.9em;
         }
 
         .instructions li {
-            margin-bottom: 4px;
+            margin-bottom: 2px;
         }
 
         .reset-btn {
@@ -351,13 +428,13 @@
             box-shadow: none;
         }
 
-        /* アドバイス表示 */
+        /* アドバイス表示（配合結果カード内用） */
         .advice-container {
-            margin-top: 15px;
-            padding: 15px;
+            margin-top: 10px;
+            padding: 10px;
             background: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-            border-left: 4px solid #e94560;
+            border-radius: 8px;
+            border-left: 3px solid #e94560;
         }
 
         .advice-container.hidden {
@@ -366,16 +443,16 @@
 
         .advice-header {
             font-weight: bold;
-            font-size: 1.1em;
-            margin-bottom: 12px;
+            font-size: 0.95em;
+            margin-bottom: 8px;
             color: #e94560;
         }
 
         .advice-item {
-            margin-bottom: 12px;
-            padding: 10px;
+            margin-bottom: 8px;
+            padding: 8px;
             background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
+            border-radius: 6px;
         }
 
         .advice-item:last-child {
@@ -384,11 +461,12 @@
 
         .advice-message {
             font-weight: bold;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
+            font-size: 0.9em;
         }
 
         .advice-suggestion {
-            font-size: 0.9em;
+            font-size: 0.85em;
             color: #aaa;
         }
 
@@ -401,36 +479,103 @@
             color: #00C864;
             font-weight: bold;
             text-align: center;
-            padding: 10px;
+            padding: 8px;
+            font-size: 0.9em;
         }
 
-        /* 代替色の提案 */
-        .alternative-color {
+        /* 代替色セクション（右側パネル） */
+        .alt-section-header {
+            font-size: 1em;
+            color: #e94560;
+            margin-bottom: 10px;
             display: flex;
             align-items: center;
-            gap: 15px;
-            padding: 10px;
-            background: rgba(255, 255, 255, 0.08);
+            gap: 8px;
+        }
+
+        .alt-color-card {
+            background: rgba(255, 255, 255, 0.05);
             border-radius: 10px;
-            margin-top: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .alt-color-card:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateX(3px);
+        }
+
+        .alt-color-card.best {
+            border-color: #00C864;
+        }
+
+        .alt-color-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
         }
 
         .alt-color-swatch {
-            width: 60px;
-            height: 60px;
-            border-radius: 10px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
+            width: 45px;
+            height: 45px;
+            border-radius: 8px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
             flex-shrink: 0;
         }
 
         .alt-color-info {
             flex: 1;
-            font-size: 0.95em;
         }
 
-        .alt-color-info strong {
-            font-size: 1.2em;
+        .alt-color-hex {
+            font-size: 1.1em;
             font-family: monospace;
+            font-weight: bold;
+        }
+
+        .alt-color-delta {
+            font-size: 0.85em;
+            margin-top: 2px;
+        }
+
+        .alt-color-delta.good {
+            color: #00C864;
+        }
+
+        .alt-color-delta.ok {
+            color: #FFC800;
+        }
+
+        .alt-color-delta.poor {
+            color: #ff6b6b;
+        }
+
+        .alt-color-desc {
+            font-size: 0.8em;
+            color: #aaa;
+            line-height: 1.3;
+        }
+
+        .alt-empty-message {
+            text-align: center;
+            color: #666;
+            padding: 20px;
+            font-size: 0.9em;
+        }
+
+        /* 旧スタイル（互換性のため残す） */
+        .alternative-color {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            margin-top: 6px;
         }
 
         .alt-delta {
@@ -441,19 +586,19 @@
         .other-alternatives {
             display: flex;
             flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 8px;
+            gap: 8px;
+            margin-top: 6px;
         }
 
         .mini-alt {
             display: flex;
             align-items: center;
-            gap: 6px;
-            padding: 6px 10px;
+            gap: 5px;
+            padding: 4px 8px;
             background: rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-            font-size: 0.85em;
-            cursor: default;
+            border-radius: 5px;
+            font-size: 0.8em;
+            cursor: pointer;
         }
 
         .mini-alt:hover {
@@ -461,9 +606,9 @@
         }
 
         .mini-swatch {
-            width: 20px;
-            height: 20px;
-            border-radius: 4px;
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
             border: 2px solid rgba(255, 255, 255, 0.3);
         }
 
@@ -485,9 +630,10 @@
             <div class="image-section" id="dropZone">
                 <div class="drop-zone" id="dropZoneContent">
                     <div class="drop-zone-text">
+                        <div style="font-size: 3em; margin-bottom: 15px;">📷</div>
                         <h3>画像をドロップまたはペースト</h3>
-                        <p>クリックしてファイルを選択することもできます</p>
-                        <p style="margin-top: 15px; color: #666;">Ctrl+V で画像をペースト可能</p>
+                        <p>クリックしてファイルを選択</p>
+                        <p style="margin-top: 10px; font-size: 0.85em;">Ctrl+V でペースト可能</p>
                     </div>
                 </div>
                 <div class="canvas-container">
@@ -498,7 +644,7 @@
                     <button class="zoom-btn" id="zoomInBtn">+ 拡大</button>
                     <button class="zoom-btn" id="zoomOutBtn">- 縮小</button>
                     <button class="zoom-btn" id="zoomResetBtn">リセット</button>
-                    <span class="zoom-info" id="zoomInfo">100% | ホイールでズーム、ドラッグで移動</span>
+                    <span class="zoom-info" id="zoomInfo">100%</span>
                 </div>
                 <input type="file" id="fileInput" accept="image/*" style="display: none;">
                 <button class="reset-btn hidden" id="resetBtn">別の画像を選択</button>
@@ -508,9 +654,9 @@
                 <div class="instructions">
                     <h4>使い方</h4>
                     <ul>
-                        <li>画像をドラッグ＆ドロップまたはペースト</li>
+                        <li>画像をドラッグ＆ドロップ</li>
                         <li>画像上でクリックして色を選択</li>
-                        <li>または下のHEXコードを直接入力</li>
+                        <li>または下のHEXコードを入力</li>
                     </ul>
                 </div>
 
@@ -521,7 +667,7 @@
                         <input type="text" id="hexInput" placeholder="#FF8800" value="#FF8800">
                         <button id="calculateBtn">計算</button>
                     </div>
-                    <div class="color-display" style="margin-top: 15px;">
+                    <div class="color-display" style="margin-top: 10px;">
                         <div class="color-swatch" id="targetSwatch" style="background: #FF8800;"></div>
                         <div class="color-info">
                             <div class="color-hex" id="targetHex">#FF8800</div>
@@ -530,7 +676,7 @@
                     </div>
                 </div>
 
-                <div class="card" id="resultsCard">
+                <div class="card scrollable" id="resultsCard">
                     <h3>配合比率</h3>
                     <div class="chart-container">
                         <canvas id="ratioChart"></canvas>
@@ -541,16 +687,23 @@
                     <div class="result-preview">
                         <div class="result-swatch" id="resultSwatch"></div>
                         <div>
-                            <div style="font-weight: bold;">再現色</div>
-                            <div class="color-hex" id="resultHex" style="font-size: 1.2em;"></div>
+                            <div style="font-weight: bold; font-size: 0.9em;">再現色</div>
+                            <div class="color-hex" id="resultHex" style="font-size: 1.1em;"></div>
                             <span class="error-badge" id="errorBadge"></span>
-                            <div style="font-size: 0.75em; color: #666; margin-top: 4px;">
-                                ΔE≦5: 優秀 | ΔE≦10: 良好
-                            </div>
                         </div>
                     </div>
                     <div class="advice-container hidden" id="adviceContainer">
                         <!-- アドバイスが動的に表示される -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="alternatives-section">
+                <div class="card scrollable">
+                    <h3 class="alt-section-header">作成可能な近い色</h3>
+                    <div id="alternativesList">
+                        <!-- 動的に生成 -->
+                        <div class="alt-empty-message">色を選択すると候補が表示されます</div>
                     </div>
                 </div>
             </div>
@@ -754,7 +907,7 @@
         // ズーム情報更新
         function updateZoomInfo() {
             const percent = Math.round(scale * 100);
-            zoomInfo.textContent = `${percent}% | ホイールでズーム、ドラッグで移動`;
+            zoomInfo.textContent = `${percent}%`;
         }
 
         // ズームイン
@@ -1231,34 +1384,40 @@
             return result;
         }
 
-        // 作成可能な近い色を探す
+        // 作成可能な近い色を探す（拡張版）
         function findAchievableColors(targetRgb) {
             const targetLab = rgbToLab(targetRgb);
             const achievable = [];
+            const seen = new Set();  // 重複防止
 
             // 方法1: 既存の単色で近いものを探す
             for (const [name, rgb] of Object.entries(BASE_COLORS)) {
                 const colorLab = rgbToLab(rgb);
                 const de = deltaE(targetLab, colorLab);
-                if (de < 20) {  // 比較的近い色
-                    achievable.push({
-                        type: 'single',
-                        name: name,
-                        nameJp: COLOR_NAMES_JP[name],
-                        rgb: rgb,
-                        hex: rgbToHex(rgb[0], rgb[1], rgb[2]),
-                        deltaE: de,
-                        description: `${COLOR_NAMES_JP[name]}単色`
-                    });
+                if (de < 30) {  // より広い範囲で探索
+                    const hex = rgbToHex(rgb[0], rgb[1], rgb[2]);
+                    if (!seen.has(hex)) {
+                        seen.add(hex);
+                        achievable.push({
+                            type: 'single',
+                            name: name,
+                            nameJp: COLOR_NAMES_JP[name],
+                            rgb: rgb,
+                            hex: hex,
+                            deltaE: de,
+                            description: `${COLOR_NAMES_JP[name]}単色`
+                        });
+                    }
                 }
             }
 
-            // 方法2: 2色の組み合わせで近い色を探す（主要な組み合わせのみ）
+            // 方法2: 2色の組み合わせで近い色を探す（より多くの比率を試す）
             const colorNames = Object.keys(BASE_COLORS);
+            const ratios = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+
             for (let i = 0; i < colorNames.length; i++) {
                 for (let j = i + 1; j < colorNames.length; j++) {
-                    // 50:50, 70:30, 30:70 の比率を試す
-                    for (const ratio of [0.5, 0.7, 0.3]) {
+                    for (const ratio of ratios) {
                         const rgb1 = BASE_COLORS[colorNames[i]];
                         const rgb2 = BASE_COLORS[colorNames[j]];
                         const mixed = [
@@ -1269,18 +1428,22 @@
                         const mixedLab = rgbToLab(mixed);
                         const de = deltaE(targetLab, mixedLab);
 
-                        if (de < 5) {  // ΔE < 5 で作れる色
-                            const r1 = Math.round(ratio * 100);
-                            const r2 = 100 - r1;
-                            achievable.push({
-                                type: 'mix',
-                                colors: [colorNames[i], colorNames[j]],
-                                ratios: [ratio, 1 - ratio],
-                                rgb: mixed,
-                                hex: rgbToHex(Math.round(mixed[0]), Math.round(mixed[1]), Math.round(mixed[2])),
-                                deltaE: de,
-                                description: `${COLOR_NAMES_JP[colorNames[i]]} ${r1}% + ${COLOR_NAMES_JP[colorNames[j]]} ${r2}%`
-                            });
+                        if (de < 15) {  // ΔE < 15 まで候補に
+                            const hex = rgbToHex(Math.round(mixed[0]), Math.round(mixed[1]), Math.round(mixed[2]));
+                            if (!seen.has(hex)) {
+                                seen.add(hex);
+                                const r1 = Math.round(ratio * 100);
+                                const r2 = 100 - r1;
+                                achievable.push({
+                                    type: 'mix',
+                                    colors: [colorNames[i], colorNames[j]],
+                                    ratios: [ratio, 1 - ratio],
+                                    rgb: mixed,
+                                    hex: hex,
+                                    deltaE: de,
+                                    description: `${COLOR_NAMES_JP[colorNames[i]]} ${r1}% + ${COLOR_NAMES_JP[colorNames[j]]} ${r2}%`
+                                });
+                            }
                         }
                     }
                 }
@@ -1289,70 +1452,58 @@
             // ΔE順にソート
             achievable.sort((a, b) => a.deltaE - b.deltaE);
 
-            return achievable.slice(0, 5);  // 上位5件
+            return achievable.slice(0, 3);  // 上位3件
         }
 
-        // 改善アドバイスを生成
-        function generateAdvice(targetRgb, resultRgb, deltaE) {
-            if (deltaE < 5) return null;
-
-            const advice = [];
-
-            // 作成可能な近い色を探す
+        // 代替色セクションを更新（常に表示）
+        function displayAlternatives(targetRgb, currentDeltaE) {
+            const alternativesList = document.getElementById('alternativesList');
             const achievableColors = findAchievableColors(targetRgb);
 
-            // 代替色の提案
-            if (achievableColors.length > 0) {
-                const bestAlt = achievableColors[0];
-
-                if (bestAlt.deltaE < deltaE) {
-                    let altHtml = `<div class="alternative-color">`;
-                    altHtml += `<div class="alt-color-swatch" style="background: ${bestAlt.hex};"></div>`;
-                    altHtml += `<div class="alt-color-info">`;
-                    altHtml += `<strong>${bestAlt.hex}</strong><br>`;
-                    altHtml += `${bestAlt.description}<br>`;
-                    altHtml += `<span class="alt-delta">ΔE: ${bestAlt.deltaE.toFixed(1)}</span>`;
-                    altHtml += `</div></div>`;
-
-                    advice.push({
-                        type: 'alternative',
-                        message: '🎨 この色なら作れます！',
-                        suggestion: altHtml,
-                        isHtml: true
-                    });
-                }
-
-                // 他の候補も表示
-                if (achievableColors.length > 1) {
-                    let othersHtml = '<div class="other-alternatives">';
-                    for (let i = 1; i < Math.min(4, achievableColors.length); i++) {
-                        const alt = achievableColors[i];
-                        othersHtml += `<div class="mini-alt" title="${alt.description} (ΔE: ${alt.deltaE.toFixed(1)})">`;
-                        othersHtml += `<div class="mini-swatch" style="background: ${alt.hex};"></div>`;
-                        othersHtml += `<span>${alt.hex}</span>`;
-                        othersHtml += `</div>`;
-                    }
-                    othersHtml += '</div>';
-
-                    advice.push({
-                        type: 'alternatives',
-                        message: '📋 他の候補',
-                        suggestion: othersHtml,
-                        isHtml: true
-                    });
-                }
+            if (achievableColors.length === 0) {
+                alternativesList.innerHTML = '<div class="alt-empty-message">近い色が見つかりませんでした</div>';
+                return;
             }
 
-            // 再現できない場合のメッセージ
-            if (achievableColors.length === 0 || achievableColors[0].deltaE >= deltaE) {
-                advice.push({
-                    type: 'general',
-                    message: '⚠️ 現在の配合が最善です',
-                    suggestion: `目標色に近い代替色が見つかりませんでした。現在の配合結果（ΔE: ${deltaE.toFixed(1)}）をお使いください。`
-                });
-            }
+            let html = '';
+            achievableColors.forEach((alt, index) => {
+                const isBest = index === 0 && alt.deltaE < currentDeltaE;
+                const deltaClass = alt.deltaE <= 5 ? 'good' : (alt.deltaE <= 10 ? 'ok' : 'poor');
 
-            return advice;
+                html += `<div class="alt-color-card ${isBest ? 'best' : ''}" data-hex="${alt.hex}" onclick="selectAlternative('${alt.hex}')">`;
+                html += `<div class="alt-color-header">`;
+                html += `<div class="alt-color-swatch" style="background: ${alt.hex};"></div>`;
+                html += `<div class="alt-color-info">`;
+                html += `<div class="alt-color-hex">${alt.hex}</div>`;
+                html += `<div class="alt-color-delta ${deltaClass}">ΔE: ${alt.deltaE.toFixed(1)}${isBest ? ' ★最適' : ''}</div>`;
+                html += `</div>`;
+                html += `</div>`;
+                html += `<div class="alt-color-desc">${alt.description}</div>`;
+                html += `</div>`;
+            });
+
+            alternativesList.innerHTML = html;
+        }
+
+        // 代替色をクリックしたときの処理
+        function selectAlternative(hex) {
+            updateTargetColor(hex);
+            calculateMix();
+        }
+
+        // 改善アドバイスを生成（簡略化）
+        function generateAdvice(targetRgb, resultRgb, currentDeltaE) {
+            // 常に代替色セクションを更新
+            displayAlternatives(targetRgb, currentDeltaE);
+
+            // アドバイスコンテナ用のメッセージ
+            if (currentDeltaE < 5) {
+                return { type: 'success', message: '良好な配合です' };
+            } else if (currentDeltaE < 10) {
+                return { type: 'ok', message: '許容範囲の配合です' };
+            } else {
+                return { type: 'poor', message: '右側の代替色をお試しください' };
+            }
         }
 
         function colorDistance(c1, c2) {
@@ -1430,38 +1581,18 @@
                 errorBadge.style.color = '#ff6b6b';
             }
 
-            // アドバイス表示
+            // アドバイス表示（常に代替色を更新）
             const adviceContainer = document.getElementById('adviceContainer');
-            if (de >= 5) {
-                const advice = generateAdvice(targetRgb, clippedRgb, de);
-                if (advice && advice.length > 0) {
-                    let adviceHtml = '<div class="advice-header">💡 代替色の提案</div>';
-                    for (const item of advice) {
-                        if (item.isHtml) {
-                            adviceHtml += `
-                                <div class="advice-item advice-${item.type}">
-                                    <div class="advice-message">${item.message}</div>
-                                    <div class="advice-suggestion">${item.suggestion}</div>
-                                </div>
-                            `;
-                        } else {
-                            adviceHtml += `
-                                <div class="advice-item advice-${item.type}">
-                                    <div class="advice-message">${item.message}</div>
-                                    <div class="advice-suggestion">${item.suggestion}</div>
-                                </div>
-                            `;
-                        }
-                    }
-                    adviceContainer.innerHTML = adviceHtml;
-                    adviceContainer.classList.remove('hidden');
-                } else {
-                    adviceContainer.classList.add('hidden');
-                }
+            const advice = generateAdvice(targetRgb, clippedRgb, de);
+
+            if (advice.type === 'success') {
+                adviceContainer.innerHTML = '<div class="advice-success">✅ 良好な配合です！</div>';
+            } else if (advice.type === 'ok') {
+                adviceContainer.innerHTML = '<div class="advice-success" style="color: #FFC800;">⚠️ ' + advice.message + '</div>';
             } else {
-                adviceContainer.innerHTML = '<div class="advice-success">✅ 良好な配合です！ΔE < 5</div>';
-                adviceContainer.classList.remove('hidden');
+                adviceContainer.innerHTML = '<div class="advice-success" style="color: #ff6b6b;">💡 ' + advice.message + '</div>';
             }
+            adviceContainer.classList.remove('hidden');
         }
 
         // 円グラフ更新
