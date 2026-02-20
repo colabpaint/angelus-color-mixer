@@ -1093,7 +1093,56 @@
             displayResults(targetRgb, bestResult);
         }
 
+        // ============================================
+        // Kubelka-Munk理論による混色計算
+        // ============================================
+
+        // RGB(0-255) → 反射率(0-1)に変換
+        function rgbToReflectance(rgb) {
+            return rgb.map(v => Math.max(0.001, Math.min(0.999, v / 255)));
+        }
+
+        // 反射率 → K/S値に変換
+        function reflectanceToKS(R) {
+            // 0除算・無限大を防ぐ
+            R = Math.max(0.001, Math.min(0.999, R));
+            return Math.pow(1 - R, 2) / (2 * R);
+        }
+
+        // K/S値 → 反射率に変換
+        function ksToReflectance(KS) {
+            if (KS <= 0) return 0.999;
+            if (KS >= 100) return 0.001;
+            return 1 + KS - Math.sqrt(KS * KS + 2 * KS);
+        }
+
+        // 反射率 → RGB(0-255)に変換
+        function reflectanceToRgb(refl) {
+            return refl.map(v => Math.max(0, Math.min(255, Math.round(v * 255))));
+        }
+
+        // Kubelka-Munk混色（減法混色）
         function blendColors(ratios, colorMatrix) {
+            // 各チャンネル(R,G,B)のK/S値を混合
+            const mixedKS = [0, 0, 0];
+
+            for (let i = 0; i < ratios.length; i++) {
+                if (ratios[i] <= 0) continue;
+
+                const refl = rgbToReflectance(colorMatrix[i]);
+                for (let j = 0; j < 3; j++) {
+                    const ks = reflectanceToKS(refl[j]);
+                    mixedKS[j] += ks * ratios[i];
+                }
+            }
+
+            // K/S → 反射率 → RGB
+            const mixedRefl = mixedKS.map(ks => ksToReflectance(ks));
+            return reflectanceToRgb(mixedRefl);
+        }
+
+        // 旧方式（RGB平均）- バックアップ用
+        function blendColorsRGB(ratios, colorMatrix) {
             const result = [0, 0, 0];
             for (let i = 0; i < ratios.length; i++) {
                 for (let j = 0; j < 3; j++) {

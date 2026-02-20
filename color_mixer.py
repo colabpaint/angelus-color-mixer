@@ -165,13 +165,56 @@ def delta_e_cie76(lab1: np.ndarray, lab2: np.ndarray) -> float:
     return np.sqrt(np.sum((lab1 - lab2) ** 2))
 
 
+# ============================================
+# Kubelka-Munk理論による混色計算
+# ============================================
+
+def rgb_to_reflectance(rgb: np.ndarray) -> np.ndarray:
+    """RGB(0-255) → 反射率(0-1)に変換"""
+    refl = rgb / 255.0
+    return np.clip(refl, 0.001, 0.999)
+
+
+def reflectance_to_ks(R: np.ndarray) -> np.ndarray:
+    """反射率 → K/S値に変換"""
+    R = np.clip(R, 0.001, 0.999)
+    return np.power(1 - R, 2) / (2 * R)
+
+
+def ks_to_reflectance(KS: np.ndarray) -> np.ndarray:
+    """K/S値 → 反射率に変換"""
+    KS = np.clip(KS, 0, 100)
+    # R = 1 + K/S - sqrt((K/S)^2 + 2*K/S)
+    result = 1 + KS - np.sqrt(KS * KS + 2 * KS)
+    return np.clip(result, 0.001, 0.999)
+
+
+def reflectance_to_rgb(refl: np.ndarray) -> np.ndarray:
+    """反射率 → RGB(0-255)に変換"""
+    return np.clip(refl * 255, 0, 255)
+
+
 def blend_colors(ratios: dict) -> np.ndarray:
     """
-    配合比率から混色結果のRGBを計算
+    Kubelka-Munk理論による混色計算（減法混色）
 
-    絵の具は減法混色だが、簡易的に加重平均で近似
-    より正確にはCMYK変換が必要だが、実用上はこれで十分
+    絵の具の混色をより正確にシミュレートする
     """
+    mixed_ks = np.zeros(3)
+
+    for color_name, ratio in ratios.items():
+        if ratio > 0:
+            refl = rgb_to_reflectance(BASE_COLORS[color_name])
+            ks = reflectance_to_ks(refl)
+            mixed_ks += ks * ratio
+
+    # K/S → 反射率 → RGB
+    mixed_refl = ks_to_reflectance(mixed_ks)
+    return reflectance_to_rgb(mixed_refl)
+
+
+def blend_colors_rgb(ratios: dict) -> np.ndarray:
+    """旧方式（RGB平均）- バックアップ用"""
     result = np.zeros(3)
     for color_name, ratio in ratios.items():
         if ratio > 0:
@@ -180,8 +223,17 @@ def blend_colors(ratios: dict) -> np.ndarray:
 
 
 def blend_colors_array(ratios: np.ndarray, color_matrix: np.ndarray) -> np.ndarray:
-    """配列ベースの混色計算"""
-    return np.dot(ratios, color_matrix)
+    """Kubelka-Munk理論による配列ベースの混色計算"""
+    mixed_ks = np.zeros(3)
+
+    for i, ratio in enumerate(ratios):
+        if ratio > 0:
+            refl = rgb_to_reflectance(color_matrix[i])
+            ks = reflectance_to_ks(refl)
+            mixed_ks += ks * ratio
+
+    mixed_refl = ks_to_reflectance(mixed_ks)
+    return reflectance_to_rgb(mixed_refl)
 
 
 def calculate_color_difference(rgb1: np.ndarray, rgb2: np.ndarray) -> float:
@@ -295,8 +347,8 @@ def calculate_mix(target_rgb: np.ndarray, use_all_colors: bool = True, use_lab: 
     candidate_matrix = np.array([BASE_COLORS[name] for name in candidate_names])
 
     def objective(ratios):
-        """目的関数: Lab色空間での色差（ΔE）の最小化"""
-        blended_rgb = np.dot(ratios, candidate_matrix)
+        """目的関数: Lab色空間での色差（ΔE）の最小化（Kubelka-Munk混色）"""
+        blended_rgb = blend_colors_array(ratios, candidate_matrix)
         blended_rgb = np.clip(blended_rgb, 0, 255)
         blended_lab = rgb_to_lab(blended_rgb)
         return delta_e_cie76(blended_lab, target_lab)
