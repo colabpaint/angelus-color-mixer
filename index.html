@@ -1180,14 +1180,14 @@
             const targetSaturation = Math.max(...targetRgb) - Math.min(...targetRgb);
             const resultSaturation = Math.max(...resultRgb) - Math.min(...resultRgb);
 
-            // 明るさのアドバイス
-            if (brightnessDiff > 30) {
+            // 明るさのアドバイス（しきい値を下げる）
+            if (brightnessDiff > 15) {
                 advice.push({
                     type: 'brightness',
                     message: '💡 もっと明るくする必要があります',
                     suggestion: 'White（ホワイト）の比率を増やしてください'
                 });
-            } else if (brightnessDiff < -30) {
+            } else if (brightnessDiff < -15) {
                 advice.push({
                     type: 'brightness',
                     message: '🌑 もっと暗くする必要があります',
@@ -1195,14 +1195,14 @@
                 });
             }
 
-            // 色相のアドバイス
-            if (diff[0] > 40) {
+            // 色相のアドバイス（しきい値を下げる）
+            if (diff[0] > 20) {
                 advice.push({
                     type: 'hue',
                     message: '🔴 赤みが足りません',
                     suggestion: 'Red, Orange, Hot Pink などを追加検討'
                 });
-            } else if (diff[0] < -40) {
+            } else if (diff[0] < -20) {
                 advice.push({
                     type: 'hue',
                     message: '🔴 赤みが強すぎます',
@@ -1210,13 +1210,13 @@
                 });
             }
 
-            if (diff[1] > 40) {
+            if (diff[1] > 20) {
                 advice.push({
                     type: 'hue',
                     message: '🟢 緑みが足りません',
                     suggestion: 'Green, Midnight Green などを追加検討'
                 });
-            } else if (diff[1] < -40) {
+            } else if (diff[1] < -20) {
                 advice.push({
                     type: 'hue',
                     message: '🟢 緑みが強すぎます',
@@ -1224,13 +1224,13 @@
                 });
             }
 
-            if (diff[2] > 40) {
+            if (diff[2] > 20) {
                 advice.push({
                     type: 'hue',
                     message: '🔵 青みが足りません',
                     suggestion: 'Blue, Light Blue, Purple などを追加検討'
                 });
-            } else if (diff[2] < -40) {
+            } else if (diff[2] < -20) {
                 advice.push({
                     type: 'hue',
                     message: '🔵 青みが強すぎます',
@@ -1238,8 +1238,8 @@
                 });
             }
 
-            // 彩度のアドバイス
-            if (targetSaturation - resultSaturation > 50) {
+            // 彩度のアドバイス（しきい値を下げる）
+            if (targetSaturation - resultSaturation > 30) {
                 advice.push({
                     type: 'saturation',
                     message: '✨ もっと鮮やかな色が必要です',
@@ -1247,18 +1247,24 @@
                 });
             }
 
-            // 全体的なアドバイス
+            // 全体的なアドバイス（ΔEに応じて必ず表示）
             if (deltaE >= 15) {
                 advice.push({
                     type: 'general',
-                    message: '⚠️ 大きな色差があります',
+                    message: '⚠️ 大きな色差があります（ΔE=' + deltaE.toFixed(1) + '）',
                     suggestion: '目標色がAngelusの色域外の可能性があります。近い色で妥協するか、別の絵の具ブランドとの併用を検討してください。'
                 });
             } else if (deltaE >= 10) {
                 advice.push({
                     type: 'general',
-                    message: '📝 中程度の色差があります',
-                    suggestion: '微調整で改善できる可能性があります。上記のアドバイスを参考に配合を手動調整してみてください。'
+                    message: '📝 中程度の色差があります（ΔE=' + deltaE.toFixed(1) + '）',
+                    suggestion: '微調整で改善できる可能性があります。配合を手動で微調整してみてください。'
+                });
+            } else if (deltaE >= 5) {
+                advice.push({
+                    type: 'general',
+                    message: '📋 わずかな色差があります（ΔE=' + deltaE.toFixed(1) + '）',
+                    suggestion: '実用上は許容範囲ですが、より正確な色が必要な場合は手動調整をお試しください。'
                 });
             }
 
